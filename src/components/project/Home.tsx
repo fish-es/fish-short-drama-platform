@@ -45,11 +45,13 @@ export default function Home() {
 
   useEffect(() => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (key) {
+    if (key && typeof crypto !== 'undefined' && crypto.subtle) {
       crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
         .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16))
         .then(hash => setIsAdmin(hash === '90af35f948de349b'))
         .catch(() => {})
+    } else {
+      setIsAdmin(false)
     }
   }, [apiKey])
 
