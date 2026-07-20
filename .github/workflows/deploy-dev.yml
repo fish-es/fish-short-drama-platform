@@ -1,0 +1,30 @@
+name: Deploy Dev
+
+on:
+  push:
+    branches: [dev]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to dev environment
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            if [ ! -d ~/fish-short-drama-platform-dev ]; then
+              git clone -b dev ${{ github.server_url }}/${{ github.repository }}.git ~/fish-short-drama-platform-dev
+            fi
+            cd ~/fish-short-drama-platform-dev
+            git fetch origin dev
+            git reset --hard origin/dev
+            echo '{"branch":"dev","author":"${{ github.event.head_commit.author.username }}","message":"${{ github.event.head_commit.message }}","time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > public/deploy-info.json
+            git log --pretty=format:'{"hash":"%h","author":"%an","message":"%s","time":"%aI"}' -20 | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/commits.json
+            git shortlog -sn --no-merges | head -20 | awk '{print "{\"commits\":" $1 ",\"name\":\"" substr($0, index($0,$2)) "\"}"}' | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/contributors.json
+            docker build -t fish-drama-dev .
+            docker stop fish-drama-dev || true
+            docker rm fish-drama-dev || true
+            docker run -d -p 3001:3000 -v ~/fish-drama-dev-data:/app/data --restart unless-stopped --name fish-drama-dev fish-drama-dev

@@ -1,0 +1,30 @@
+name: Block Fork PR to Main
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened]
+
+permissions:
+  pull-requests: write
+
+jobs:
+  block:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.head.repo.fork == true
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '⚠️ Fork PR 请提交到 `dev` 分支，不要直接提到 `main`。已自动关闭此 PR。'
+            })
+            await github.rest.pulls.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              state: 'closed'
+            })
