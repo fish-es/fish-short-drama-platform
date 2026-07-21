@@ -26,8 +26,8 @@ export default function AssetLibrary() {
   const loadAssets = async () => {
     if (!currentProject) return
     const [chars, locs] = await Promise.all([
-      fetch(`/api/asset?projectId=${currentProject.id}&type=characters`).then(r => r.json()),
-      fetch(`/api/asset?projectId=${currentProject.id}&type=locations`).then(r => r.json())
+      fetch(`/api/asset?projectId=${currentProject.id}&type=characters`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json()),
+      fetch(`/api/asset?projectId=${currentProject.id}&type=locations`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json())
     ])
     setCharacters(chars)
     setLocations(locs)
@@ -48,7 +48,7 @@ export default function AssetLibrary() {
     const type = tab === 'characters' ? 'character' : 'location'
     await fetch('/api/asset', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
       body: JSON.stringify({ id, type, keywords: editKeywords })
     })
     setEditingId(null)

@@ -20,19 +20,21 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SERVER_SSH_KEY }}
           script: |
-            if [ ! -d ~/fish-short-drama-platform-preview ]; then
-              git clone ${{ github.server_url }}/${{ github.repository }}.git ~/fish-short-drama-platform-preview
-            fi
-            cd ~/fish-short-drama-platform-preview
-            git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-${{ github.event.pull_request.number }}
-            git checkout -f pr-${{ github.event.pull_request.number }}
-            echo '{"pr":${{ github.event.pull_request.number }},"author":"${{ github.event.pull_request.user.login }}","title":"${{ github.event.pull_request.title }}","time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > public/deploy-info.json
-            git log --pretty=format:'{"hash":"%h","author":"%an","message":"%s","time":"%aI"}' -20 | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/commits.json
-            git shortlog -sn --no-merges | head -20 | awk '{print "{\"commits\":" $1 ",\"name\":\"" substr($0, index($0,$2)) "\"}"}' | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/contributors.json
-            docker build -t fish-drama-preview .
-            docker stop fish-drama-preview || true
-            docker rm fish-drama-preview || true
-            docker run -d -p 3002:3000 -v ~/fish-drama-preview-data:/app/data --restart unless-stopped --name fish-drama-preview fish-drama-preview
+              if [ ! -d ~/fish-short-drama-platform-preview ]; then
+                git clone ${{ github.server_url }}/${{ github.repository }}.git ~/fish-short-drama-platform-preview
+              fi
+              cd ~/fish-short-drama-platform-preview
+              git checkout -f main 2>/dev/null || git checkout -f dev 2>/dev/null || true
+              git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-${{ github.event.pull_request.number }} --force
+              git checkout -f pr-${{ github.event.pull_request.number }}
+              git shortlog -sn --no-merges | head -20 | awk '{print "{\"commits\":" $1 ",\"name\":\"" substr($0, index($0,$2)) "\"}' | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/contributors.json
+              echo '{"pr":${{ github.event.pull_request.number }},"author":"${{ github.event.pull_request.user.login }}","title":"${{ github.event.pull_request.title }}","time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > public/deploy-info.json
+              git log --pretty=format:'{"hash":"%h","author":"%an","message":"%s","time":"%aI"}' -20 | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/commits.json
+              docker build -t fish-drama-preview .
+              docker stop fish-drama-preview || true
+              docker rm fish-drama-preview || true
+              docker run -d -p 3002:3000 -v ~/fish-drama-preview-data:/app/data --restart unless-stopped --name fish-drama-preview fish-drama-preview
+
 
       - name: Comment preview URL
         uses: actions/github-script@v7

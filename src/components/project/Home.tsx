@@ -81,7 +81,7 @@ export default function Home() {
   const handleOpen = async (project: any) => {
     setCurrentProject(project)
     try {
-      const res = await fetch(`/api/script/get?projectId=${project.id}`)
+      const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } })
       const data = await res.json()
       if (data && data.episodes && data.episodes.length > 0) {
         setEpisodes(data.episodes, data.scriptId)
