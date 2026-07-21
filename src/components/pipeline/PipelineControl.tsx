@@ -197,7 +197,7 @@ export default function PipelineControl() {
     try {
       const res = await fetch('/api/ffmpeg', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
         body: JSON.stringify({ projectId: currentProject.id, episodeId: currentEpisodeId, subtitles })
       })
       const data = await res.json()
