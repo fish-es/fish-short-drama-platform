@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   const userId = getUserId(apiKey)
   const db = await getDatabase()
 
-  const projCheck = db.exec("SELECT id FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
+  const projCheck = db.exec("SELECT id FROM projects WHERE id = ? AND (user_id = ? OR is_public = 1)", [projectId, userId])
   if (!projCheck.length || !projCheck[0].values.length) return NextResponse.json({ error: '项目不存在' }, { status: 404 })
   if (type === 'characters') {
     const rows = db.exec("SELECT id, name, description, voice_id, reference_image, keywords FROM characters WHERE project_id = ?", [projectId])

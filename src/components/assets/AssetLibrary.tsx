@@ -12,6 +12,7 @@ interface Location {
 
 export default function AssetLibrary() {
   const { currentProject } = useAppStore()
+  const isOwner = currentProject?.isOwner !== false
   const [tab, setTab] = useState<'characters' | 'locations'>('characters')
   const [characters, setCharacters] = useState<Character[]>([])
   const [locations, setLocations] = useState<Location[]>([])
@@ -29,8 +30,8 @@ export default function AssetLibrary() {
       fetch(`/api/asset?projectId=${currentProject.id}&type=characters`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json()),
       fetch(`/api/asset?projectId=${currentProject.id}&type=locations`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json())
     ])
-    setCharacters(chars)
-    setLocations(locs)
+    setCharacters(Array.isArray(chars) ? chars : [])
+    setLocations(Array.isArray(locs) ? locs : [])
   }
 
   const handleRegenerate = async (id: string, keywords: string) => {
@@ -65,13 +66,13 @@ export default function AssetLibrary() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-700">
+      <div className="flex items-center gap-2 px-4 py-2 border-b border-white/10">
         <button onClick={() => setTab('characters')}
-          className={`px-3 py-1 text-xs rounded ${tab === 'characters' ? 'bg-blue-600' : 'bg-gray-700'}`}>
+          className={`px-3 py-1 text-xs rounded ${tab === 'characters' ? 'bg-indigo-600' : 'btn-secondary'}`}>
           角色 ({characters.length})
         </button>
         <button onClick={() => setTab('locations')}
-          className={`px-3 py-1 text-xs rounded ${tab === 'locations' ? 'bg-blue-600' : 'bg-gray-700'}`}>
+          className={`px-3 py-1 text-xs rounded ${tab === 'locations' ? 'bg-indigo-600' : 'btn-secondary'}`}>
           场景 ({locations.length})
         </button>
       </div>
@@ -81,13 +82,13 @@ export default function AssetLibrary() {
           <p className="text-center text-gray-500 text-sm py-4">生成大纲后自动创建</p>
         )}
         {items.map(item => (
-          <div key={item.id} className="p-3 bg-gray-800 rounded-lg border border-gray-700">
+          <div key={item.id} className="glass-card p-3">
             <div className="flex items-start gap-3">
               {item.referenceImage ? (
                 <img src={assetUrl(item.referenceImage)}
                   alt={item.name} className="w-16 h-16 object-cover rounded flex-shrink-0" />
               ) : (
-                <div className="w-16 h-16 bg-gray-700 rounded flex items-center justify-center flex-shrink-0">
+                <div className="w-16 h-16 bg-white/5 rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-xs text-gray-500">无图</span>
                 </div>
               )}
@@ -97,26 +98,28 @@ export default function AssetLibrary() {
                 {editingId === item.id ? (
                   <div className="mt-1 space-y-1">
                     <textarea value={editKeywords} onChange={e => setEditKeywords(e.target.value)}
-                      className="w-full px-2 py-1 bg-gray-900 border border-gray-700 rounded text-xs text-gray-300 resize-none" rows={2} />
+                      className="input-field w-full text-xs resize-none" rows={2} />
                     <div className="flex gap-1">
-                      <button onClick={() => handleSaveKeywords(item.id)} className="px-2 py-0.5 text-xs bg-green-600 rounded">保存</button>
-                      <button onClick={() => setEditingId(null)} className="px-2 py-0.5 text-xs bg-gray-700 rounded">取消</button>
+                      <button onClick={() => handleSaveKeywords(item.id)} className="btn-success px-2 py-0.5 text-xs">保存</button>
+                      <button onClick={() => setEditingId(null)} className="btn-secondary px-2 py-0.5 text-xs">取消</button>
                     </div>
                   </div>
                 ) : (
-                  <p className="text-xs text-blue-400 mt-0.5 cursor-pointer hover:text-blue-300"
-                    onClick={() => { setEditingId(item.id); setEditKeywords(item.keywords) }}>
-                    🏷 {item.keywords || '(点击添加关键词)'}
+                  <p className={`text-xs text-indigo-400 mt-0.5 ${isOwner ? 'cursor-pointer hover:text-indigo-300' : ''}`}
+                    onClick={() => { if (isOwner) { setEditingId(item.id); setEditKeywords(item.keywords) } }}>
+                    🏷 {item.keywords || (isOwner ? '(点击添加关键词)' : '(无关键词)')}
                   </p>
                 )}
               </div>
             </div>
             <div className="flex gap-2 mt-2">
-              <button onClick={() => handleRegenerate(item.id, item.keywords)}
-                disabled={!item.keywords}
-                className="px-2 py-1 text-xs bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded">
-                重新生成
-              </button>
+              {isOwner && (
+                <button onClick={() => handleRegenerate(item.id, item.keywords)}
+                  disabled={!item.keywords}
+                  className="btn-primary px-2 py-1 text-xs disabled:opacity-50">
+                  重新生成
+                </button>
+              )}
             </div>
           </div>
         ))}

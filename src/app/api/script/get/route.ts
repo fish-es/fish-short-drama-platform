@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const userId = getUserId(apiKey)
   const db = await getDatabase()
 
-  const projCheck = db.exec("SELECT id FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
+  const projCheck = db.exec("SELECT id FROM projects WHERE id = ? AND (user_id = ? OR is_public = 1)", [projectId, userId])
   if (!projCheck.length || !projCheck[0].values.length) return NextResponse.json({ error: '项目不存在' }, { status: 404 })
   const scriptRows = db.exec('SELECT id FROM scripts WHERE project_id = ? ORDER BY created_at DESC LIMIT 1', [projectId])
   if (!scriptRows.length || !scriptRows[0].values.length) return NextResponse.json(null)
