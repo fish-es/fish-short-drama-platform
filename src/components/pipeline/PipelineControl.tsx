@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
 import { sceneApi } from '@/services/api.client'
+import { generateImage, generateVideo, pollVideoStatus } from '@/services/agnes.client'
 
 export default function PipelineControl() {
   const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress,
@@ -86,7 +87,10 @@ export default function PipelineControl() {
           setPipelineStep(`生成图片 (${imgDone}/${totalScenes})`)
           const t0 = Date.now()
           try {
-            const result = await sceneApi.generateImage(draftScene.id)
+            const apiKey = localStorage.getItem('agnes_api_key') || ''
+            const ctx = await sceneApi.getContext(draftScene.id)
+            const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+            await sceneApi.saveImage(draftScene.id, imageUrl, ctx.prompt, ctx.size)
             updateScene(draftScene.id, { state: 'IMG_READY', errorMessage: null })
             consecutiveFailures = 0
             setStats(prev => ({ ...prev, images: prev.images + 1, imgTime: prev.imgTime + (Date.now() - t0) }))
@@ -95,12 +99,14 @@ export default function PipelineControl() {
             consecutiveFailures++
           }
         } else if (errorScene && !allImagesComplete) {
-          // Retry failed images before starting any videos
           setPipelineStep(`重试失败图片... 等待15秒`)
           await new Promise(resolve => setTimeout(resolve, 15000))
           try {
+            const apiKey = localStorage.getItem('agnes_api_key') || ''
             updateScene(errorScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-            await sceneApi.generateImage(errorScene.id)
+            const ctx = await sceneApi.getContext(errorScene.id)
+            const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+            await sceneApi.saveImage(errorScene.id, imageUrl, ctx.prompt, ctx.size)
             updateScene(errorScene.id, { state: 'IMG_READY', errorMessage: null })
             consecutiveFailures = 0
           } catch (e: any) {
@@ -111,7 +117,22 @@ export default function PipelineControl() {
           setPipelineStep(`生成视频 (${videoDone}/${totalScenes})`)
           const t0 = Date.now()
           try {
-            await sceneApi.generateVideo(imgReadyScene.id)
+            const apiKey = localStorage.getItem('agnes_api_key') || ''
+            const ctx = await sceneApi.getVideoContext(imgReadyScene.id)
+            const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, apiKey)
+            // Poll for completion
+            const maxPollTime = 5 * 60 * 1000
+            const pollInterval = 5000
+            const startTime = Date.now()
+            let videoUrl = ''
+            while (Date.now() - startTime < maxPollTime) {
+              await new Promise(resolve => setTimeout(resolve, pollInterval))
+              const result = await pollVideoStatus(videoId, apiKey)
+              if (result.status === 'completed' && result.url) { videoUrl = result.url; break }
+              if (result.status === 'failed') throw new Error('视频生成失败')
+            }
+            if (!videoUrl) throw new Error('视频生成超时')
+            await sceneApi.saveVideo(imgReadyScene.id, videoUrl, videoId)
             updateScene(imgReadyScene.id, { state: 'VIDEO_READY', errorMessage: null })
             consecutiveFailures = 0
             setStats(prev => ({ ...prev, videos: prev.videos + 1, vidTime: prev.vidTime + (Date.now() - t0) }))
@@ -120,24 +141,26 @@ export default function PipelineControl() {
             consecutiveFailures++
           }
 
-          // After each video, check if there are failed images and retry one
+          // After each video, retry a failed image if any
           const freshScenes = useAppStore.getState().scenes
           const failedImageScene = freshScenes.find(s => s.state === 'ERROR')
           if (failedImageScene) {
             setPipelineStep(`视频完成，顺便重试失败的图片...`)
             try {
+              const apiKey = localStorage.getItem('agnes_api_key') || ''
               const imgRes = await fetch(`/api/scene/image?sceneId=${failedImageScene.id}`)
               const imgData = await imgRes.json()
               if (!imgData.filePath) {
                 updateScene(failedImageScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-                await sceneApi.generateImage(failedImageScene.id)
+                const ctx = await sceneApi.getContext(failedImageScene.id)
+                const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+                await sceneApi.saveImage(failedImageScene.id, imageUrl, ctx.prompt, ctx.size)
                 updateScene(failedImageScene.id, { state: 'IMG_READY', errorMessage: null })
                 consecutiveFailures = 0
               }
             } catch {}
           }
         } else if (errorScene) {
-          // Retry failed scene: check if it already has an image
           setPipelineStep(`重试失败场景... 等待15秒`)
           await new Promise(resolve => setTimeout(resolve, 15000))
 
@@ -149,10 +172,23 @@ export default function PipelineControl() {
           } catch {}
 
           if (hasImage) {
-            // Has image, retry video
             try {
+              const apiKey = localStorage.getItem('agnes_api_key') || ''
               updateScene(errorScene.id, { state: 'GENERATING_VIDEO', errorMessage: null })
-              await sceneApi.generateVideo(errorScene.id)
+              const ctx = await sceneApi.getVideoContext(errorScene.id)
+              const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, apiKey)
+              const maxPollTime = 5 * 60 * 1000
+              const pollInterval = 5000
+              const startTime = Date.now()
+              let videoUrl = ''
+              while (Date.now() - startTime < maxPollTime) {
+                await new Promise(resolve => setTimeout(resolve, pollInterval))
+                const result = await pollVideoStatus(videoId, apiKey)
+                if (result.status === 'completed' && result.url) { videoUrl = result.url; break }
+                if (result.status === 'failed') throw new Error('视频生成失败')
+              }
+              if (!videoUrl) throw new Error('视频生成超时')
+              await sceneApi.saveVideo(errorScene.id, videoUrl, videoId)
               updateScene(errorScene.id, { state: 'VIDEO_READY', errorMessage: null })
               consecutiveFailures = 0
             } catch (e: any) {
@@ -160,10 +196,12 @@ export default function PipelineControl() {
               consecutiveFailures++
             }
           } else {
-            // No image, retry image
             try {
+              const apiKey = localStorage.getItem('agnes_api_key') || ''
               updateScene(errorScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-              await sceneApi.generateImage(errorScene.id)
+              const ctx = await sceneApi.getContext(errorScene.id)
+              const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+              await sceneApi.saveImage(errorScene.id, imageUrl, ctx.prompt, ctx.size)
               updateScene(errorScene.id, { state: 'IMG_READY', errorMessage: null })
               consecutiveFailures = 0
             } catch (e: any) {
@@ -226,16 +264,16 @@ export default function PipelineControl() {
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
-        {pipelineStatus !== 'running' && (
+        {currentProject?.isOwner !== false && pipelineStatus !== 'running' && (
           <button onClick={() => { resetPipeline(); runAutoPipeline() }}
             disabled={scenes.length === 0}
-            className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded-lg text-sm font-medium">
+            className="btn-success px-4 py-2 disabled:opacity-50">
             一键生成
           </button>
         )}
         {pipelineStatus === 'running' && (
           <button onClick={handleStop}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-medium">
+            className="btn-danger px-4 py-2">
             停止
           </button>
         )}
@@ -244,8 +282,8 @@ export default function PipelineControl() {
       {(pipelineStatus === 'running' || pipelineStatus === 'paused' || pipelineStatus === 'completed' || pipelineStatus === 'error') && (
         <div className="space-y-2">
           <p className="text-sm text-gray-300">{pipelineStep}</p>
-          <div className="w-full bg-gray-700 rounded-full h-2">
-            <div className="bg-blue-600 h-2 rounded-full transition-all" style={{ width: `${pipelineProgress}%` }} />
+          <div className="progress-bar">
+            <div className="progress-bar-fill" style={{ width: `${pipelineProgress}%` }} />
           </div>
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{pipelineProgress}%</span>

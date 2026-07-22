@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
 import { projectApi } from '@/services/api.client'
 import { setApiKey } from '@/services/api.client'
+import { generateImage } from '@/services/agnes.client'
 
 interface FeedbackItem {
   id: string
@@ -18,6 +19,8 @@ export default function Home() {
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [genre, setGenre] = useState('auto')
   const [episodeCount, setEpisodeCount] = useState('15')
+  const [projectType, setProjectType] = useState<'drama' | 'video'>('drama')
+  const [videoDuration, setVideoDuration] = useState('60')
   const [customEpisodeCount, setCustomEpisodeCount] = useState('')
   const [creating, setCreating] = useState(false)
   const [showKey, setShowKey] = useState(false)
@@ -31,6 +34,9 @@ export default function Home() {
   const [changelog, setChangelog] = useState<any[]>([])
   const [changelogContent, setChangelogContent] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
+  const [showTutorial, setShowTutorial] = useState(false)
+  const [showFeedbackGuide, setShowFeedbackGuide] = useState(false)
+  const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
   const [contributors, setContributors] = useState<any[]>([])
 
   useEffect(() => {
@@ -60,9 +66,9 @@ export default function Home() {
     setCreating(true)
     setStoreGenre(genre)
     const epCount = episodeCount === 'custom' ? parseInt(customEpisodeCount) || 15 : parseInt(episodeCount)
-    setStoreEpisodeCount(epCount)
+    setStoreEpisodeCount(projectType === 'video' ? 1 : epCount)
     try {
-      const project = await projectApi.create(newName.trim(), aspectRatio)
+      const project = await projectApi.create(newName.trim(), aspectRatio, projectType)
       setProjects([project, ...projects])
       setCurrentProject(project)
     } catch (e: any) {
@@ -74,6 +80,7 @@ export default function Home() {
   }
 
   const handleDelete = async (id: string) => {
+    if (!confirm('确定要删除这个项目吗？所有相关数据将被永久删除。')) return
     await projectApi.delete(id)
     setProjects(projects.filter(p => p.id !== id))
   }
@@ -92,6 +99,71 @@ export default function Home() {
   const handleSaveKey = () => {
     setApiKey(apiKey)
     setShowKey(false)
+    projectApi.list().then(setProjects).catch(() => {})
+  }
+
+  const [checkingKey, setCheckingKey] = useState(false)
+
+  const handleCheckKey = async () => {
+    if (!apiKey) { alert('请先填写 API Key'); return }
+    setCheckingKey(true)
+    try {
+      const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 })
+      })
+      if (res.ok) {
+        alert('API Key 有效')
+      } else {
+        alert(`API Key 无效 (${res.status})`)
+      }
+    } catch (e: any) {
+      alert('检查失败: ' + e.message)
+    } finally {
+      setCheckingKey(false)
+    }
+  }
+
+  const handleRegenCover = async (project: any) => {
+    const key = localStorage.getItem('agnes_api_key') || ''
+    if (!key) { alert('请先设置 API Key'); return }
+    const title = project.dramaTitle || project.name
+    const aspectRatio = project.aspectRatio || '16:9'
+    const coverSize = aspectRatio === '9:16' ? '768x1024' : aspectRatio === '1:1' ? '1024x1024' : '1024x768'
+    try {
+      const url = await generateImage(`${title}，短剧封面海报，电影感，精美构图，主角特写，戏剧性光影`, coverSize, key)
+      await fetch('/api/asset/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': key },
+        body: JSON.stringify({ projectId: project.id, type: 'cover', name: '', imageUrl: url })
+      })
+      setProjects(projects.map(p => p.id === project.id ? { ...p, coverImage: url } : p))
+    } catch (e: any) {
+      alert('封面生成失败: ' + e.message)
+    }
+  }
+
+  const handleDownloadCover = async (project: any) => {
+    if (!project.coverImage) return
+    const url = project.coverImage.startsWith('http') ? project.coverImage : `/api/file?path=${encodeURIComponent(project.coverImage)}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${project.dramaTitle || project.name}_封面.png`
+    a.target = '_blank'
+    a.click()
+  }
+
+  const handleTogglePublic = async (project: any) => {
+    const newPublic = !project.isPublic
+    try {
+      await fetch('/api/project', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+        body: JSON.stringify({ id: project.id, isPublic: newPublic })
+      })
+      setProjects(projects.map(p => p.id === project.id ? { ...p, isPublic: newPublic } : p))
+    } catch {}
   }
 
   const handleSubmitFeedback = async () => {
@@ -140,17 +212,17 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex">
+    <div className="min-h-screen text-white flex" style={{ background: 'linear-gradient(180deg, #0c0c14 0%, #121220 100%)' }}>
       {/* 左侧面板 */}
-      <div className="w-64 shrink-0 border-r border-gray-700 h-screen overflow-y-auto p-3 space-y-6">
+      <div className="w-64 shrink-0 border-r border-white/5 h-screen overflow-y-auto p-4 space-y-6" style={{ background: 'rgba(12, 12, 20, 0.95)' }}>
         {/* 贡献榜 */}
         {contributors.length > 0 && (
           <div>
-            <h3 className="text-xs font-bold mb-2 text-gray-400 uppercase">贡献榜</h3>
-            <div className="space-y-1">
+            <h3 className="text-xs font-bold mb-3 text-gray-400 uppercase tracking-wider">贡献榜</h3>
+            <div className="space-y-1.5">
               {contributors.map((c, i) => (
-                <div key={i} className="flex items-center justify-between px-2 py-1 bg-gray-800 rounded text-xs">
-                  <span className="text-gray-300">
+                <div key={i} className="flex items-center justify-between px-3 py-2 glass-card text-xs">
+                  <span className="text-gray-200">
                     {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`} {c.name}
                   </span>
                   <span className="text-gray-500">{c.commits} commits</span>
@@ -162,26 +234,26 @@ export default function Home() {
 
         {/* 更新日志 */}
         <div>
-          <h3 className="text-xs font-bold mb-2 text-gray-400 uppercase">更新日志</h3>
+          <h3 className="text-xs font-bold mb-3 text-gray-400 uppercase tracking-wider">更新日志</h3>
           {isAdmin && (
             <div className="mb-2 flex gap-1">
               <input type="text" value={changelogContent} onChange={e => setChangelogContent(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmitChangelog()}
                 placeholder="输入更新内容..."
-                className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs focus:outline-none focus:border-blue-500" />
+                className="input-field flex-1 text-xs !py-1.5" />
               <button onClick={handleSubmitChangelog} disabled={!changelogContent.trim()}
-                className="px-2 py-1 bg-green-600 hover:bg-green-700 disabled:opacity-50 rounded text-xs">发布</button>
+                className="btn-success !py-1.5 !px-2 !text-xs">发布</button>
             </div>
           )}
           {changelog.length > 0 ? (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {changelog.map(item => (
-                <div key={item.id} className="p-2 bg-gray-800 rounded border border-gray-700">
+                <div key={item.id} className="p-2.5 glass-card">
                   <div className="flex items-center justify-between">
                     <span className="text-xs text-gray-500">{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
                     {isAdmin && <button onClick={() => handleDeleteChangelog(item.id)} className="text-xs text-red-400 hover:text-red-300">x</button>}
                   </div>
-                  <p className="text-xs text-gray-300 mt-0.5">{item.content}</p>
+                  <p className="text-xs text-gray-300 mt-1">{item.content}</p>
                 </div>
               ))}
             </div>
@@ -192,31 +264,31 @@ export default function Home() {
 
         {/* 问题与建议 */}
         <div>
-          <h3 className="text-xs font-bold mb-2 text-gray-400 uppercase">问题与建议</h3>
-          <div className="mb-2 space-y-1">
+          <h3 className="text-xs font-bold mb-3 text-gray-400 uppercase tracking-wider">问题与建议</h3>
+          <div className="mb-2 space-y-1.5">
             <input type="text" value={feedbackNickname} onChange={e => setFeedbackNickname(e.target.value)}
               placeholder="昵称（选填）"
-              className="w-full px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs focus:outline-none focus:border-blue-500" />
+              className="input-field w-full text-xs !py-1.5" />
             <div className="flex gap-1">
               <input type="text" value={feedbackContent} onChange={e => setFeedbackContent(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSubmitFeedback()}
                 placeholder="输入问题或建议..."
-                className="flex-1 px-2 py-1 bg-gray-800 border border-gray-700 rounded text-xs focus:outline-none focus:border-blue-500" />
+                className="input-field flex-1 text-xs !py-1.5" />
               <button onClick={handleSubmitFeedback} disabled={submitting || !feedbackContent.trim()}
-                className="px-2 py-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded text-xs">
+                className="btn-primary !py-1.5 !px-2 !text-xs">
                 {submitting ? '..' : '提交'}
               </button>
             </div>
           </div>
           {feedbackList.length > 0 && (
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               {feedbackList.map(item => (
-                <div key={item.id} className="p-2 bg-gray-800 rounded border border-gray-700">
+                <div key={item.id} className="p-2.5 glass-card">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs text-blue-400">{item.nickname}</span>
+                    <span className="text-xs text-indigo-400">{item.nickname}</span>
                     <span className="text-xs text-gray-500">{new Date(item.createdAt).toLocaleString('zh-CN')}</span>
                   </div>
-                  <p className="text-xs text-gray-300 mt-0.5">{item.content}</p>
+                  <p className="text-xs text-gray-300 mt-1">{item.content}</p>
                 </div>
               ))}
             </div>
@@ -228,16 +300,69 @@ export default function Home() {
       <div className="flex-1 p-8 overflow-y-auto">
         <div className="max-w-4xl mx-auto">
           <div className="flex items-center justify-between mb-8">
-            <h1 className="text-3xl font-bold">短剧开发平台</h1>
-            <button onClick={() => setShowKey(!showKey)} className="px-4 py-1.5 text-sm bg-gray-700 hover:bg-gray-600 rounded">
-              ⚙ API Key
-            </button>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">短剧开发平台</h1>
+              <span className={`badge ${
+                deployInfo?.pr ? 'badge-yellow' : deployInfo?.branch === 'main' ? 'badge-green' : deployInfo?.branch === 'dev' ? 'badge-blue' : 'badge-gray'
+              }`}>
+                {deployInfo?.pr ? '测试版' : deployInfo?.branch === 'main' ? '正式版' : deployInfo?.branch === 'dev' ? '实验版' : '本地环境'}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setShowFeedbackGuide(!showFeedbackGuide)} className="btn-secondary !text-xs">
+                反馈
+              </button>
+              <button onClick={() => setShowTutorial(!showTutorial)} className="btn-secondary !text-xs">
+                ? 使用教程
+              </button>
+              <button onClick={() => setShowKey(!showKey)} className="btn-secondary !text-xs">
+                ⚙ API Key
+              </button>
+            </div>
           </div>
 
+          {showTutorial && (
+            <div className="mb-6 p-5 glass-card text-sm text-gray-300 space-y-3">
+              <h3 className="text-base font-bold text-white">使用教程</h3>
+              <div className="space-y-2">
+                <p className="font-medium text-gray-200">第一步：获取 API Key</p>
+                <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                  <li>访问 <a href="https://platform.agnes-ai.com/login" target="_blank" className="text-indigo-400 hover:underline">Agnes AI 注册页面</a> 注册账号</li>
+                  <li>登录后进入 <a href="https://platform.agnes-ai.com/settings/apiKeys" target="_blank" className="text-indigo-400 hover:underline">API Keys 设置页</a></li>
+                  <li>点击创建新的 API Key，复制保存</li>
+                </ol>
+                <p className="font-medium text-gray-200 pt-2">第二步：设置 Key</p>
+                <p className="text-gray-400">点击右上角"⚙ API Key"按钮，粘贴你的 Key 并保存</p>
+                <p className="font-medium text-gray-200 pt-2">第三步：创建项目</p>
+                <p className="text-gray-400">输入短剧名称，选择画面比例和集数，点击创建</p>
+                <p className="font-medium text-gray-200 pt-2">第四步：生成内容</p>
+                <ol className="list-decimal list-inside space-y-1 text-gray-400">
+                  <li>输入故事创意，AI 自动生成大纲、角色、场景</li>
+                  <li>选择剧集，生成分镜场景</li>
+                  <li>点击"一键生成"，自动生成图片和视频</li>
+                </ol>
+              </div>
+              <button onClick={() => setShowTutorial(false)} className="text-xs text-gray-500 hover:text-indigo-400 transition">收起</button>
+            </div>
+          )}
+
+          {showFeedbackGuide && (
+            <div className="mb-6 p-5 glass-card text-sm text-gray-300 space-y-3">
+              <h3 className="text-base font-bold text-white">如何反馈</h3>
+              <div className="space-y-2">
+                <p className="font-medium text-gray-200">方式一：在首页左侧留言</p>
+                <p className="text-gray-400">在左侧"问题与建议"栏直接输入你的反馈，所有用户都能看到。</p>
+                <p className="font-medium text-gray-200 pt-2">方式二：到 GitHub 提 Issue</p>
+                <p className="text-gray-400">访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" className="text-indigo-400 hover:underline">GitHub Issues 页面</a>，点击 New Issue 描述你的问题或建议。适合较复杂的 bug 或功能需求。</p>
+              </div>
+              <button onClick={() => setShowFeedbackGuide(false)} className="text-xs text-gray-500 hover:text-indigo-400 transition">收起</button>
+            </div>
+          )}
+
           {deployInfo && (
-            <div className="mb-4 px-3 py-2 bg-gray-800 rounded border border-gray-700 text-xs text-gray-400 flex items-center gap-2">
+            <div className="mb-4 px-4 py-2.5 glass-card text-xs text-gray-400 flex items-center gap-2">
               <span>当前部署：</span>
-              <span className="text-blue-400">{deployInfo.author}</span>
+              <span className="text-indigo-400">{deployInfo.author}</span>
               {deployInfo.pr && <span>PR #{deployInfo.pr}</span>}
               {deployInfo.branch && <span>({deployInfo.branch})</span>}
               {deployInfo.title && <span>— {deployInfo.title}</span>}
@@ -248,12 +373,12 @@ export default function Home() {
 
           {commits.length > 0 && (
             <details className="mb-6">
-              <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300">最近提交记录（{commits.length}）</summary>
+              <summary className="text-sm text-gray-400 cursor-pointer hover:text-indigo-400 transition">最近提交记录（{commits.length}）</summary>
               <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
                 {commits.map((c, i) => (
-                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 bg-gray-800 rounded text-xs">
-                    <span className="text-yellow-400 font-mono">{c.hash}</span>
-                    <span className="text-blue-400">{c.author}</span>
+                  <div key={i} className="flex items-center gap-2 px-3 py-1.5 glass-card text-xs !rounded-lg">
+                    <span className="text-amber-400 font-mono">{c.hash}</span>
+                    <span className="text-indigo-400">{c.author}</span>
                     <span className="text-gray-300 flex-1 truncate">{c.message}</span>
                     <span className="text-gray-500 shrink-0">{new Date(c.time).toLocaleString('zh-CN')}</span>
                   </div>
@@ -263,11 +388,14 @@ export default function Home() {
           )}
 
         {showKey && (
-          <div className="mb-6 p-4 bg-gray-800 rounded-lg border border-gray-700">
+          <div className="mb-6 p-4 glass-card">
             <div className="flex gap-2">
               <input type="password" value={apiKey} onChange={e => setApiKeyState(e.target.value)}
-                className="flex-1 px-3 py-1.5 bg-gray-900 border border-gray-700 rounded text-sm" />
-              <button onClick={handleSaveKey} className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded text-sm">保存</button>
+                className="input-field flex-1" />
+              <button onClick={handleSaveKey} className="btn-primary">保存</button>
+              <button onClick={handleCheckKey} disabled={checkingKey} className="btn-secondary">
+                {checkingKey ? '检查中...' : '检查可用性'}
+              </button>
             </div>
           </div>
         )}
@@ -277,84 +405,158 @@ export default function Home() {
             <input type="text" value={newName} onChange={e => setNewName(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleCreate()}
               placeholder="输入新项目名称..."
-              className="flex-1 px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500" />
+              className="input-field flex-1" />
             <button onClick={handleCreate} disabled={creating || !newName.trim()}
-              className="px-6 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg font-medium">
+              className="btn-primary !px-6">
               {creating ? '创建中...' : '创建项目'}
+            </button>
+          </div>
+          <div className="flex gap-2 mb-2">
+            <button onClick={() => setProjectType('drama')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${projectType === 'drama' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+              短剧 <span className="text-[10px] opacity-60">内测</span>
+            </button>
+            <button onClick={() => setProjectType('video')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${projectType === 'video' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+              长视频 <span className="text-[10px] opacity-60">内测</span>
             </button>
           </div>
           <div className="flex gap-3 flex-wrap">
             <select value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}
-              className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm">
+              className="input-field text-sm">
               <option value="9:16">9:16 竖屏</option>
               <option value="16:9">16:9 横屏</option>
               <option value="1:1">1:1 方形</option>
             </select>
-            <select value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}
-              className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm">
-              <option value="10">10 集</option>
-              <option value="15">15 集</option>
-              <option value="20">20 集</option>
-              <option value="30">30 集</option>
-              <option value="custom">自定义</option>
-            </select>
-            {episodeCount === 'custom' && (
-              <input type="number" value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)}
-                placeholder="集数" min="3" max="100"
-                className="w-16 px-2 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm" />
+            {projectType === 'drama' && (
+              <>
+                <select value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}
+                  className="input-field text-sm">
+                  <option value="5">5 集</option>
+                  <option value="10">10 集</option>
+                  <option value="15">15 集</option>
+                  <option value="20">20 集</option>
+                  <option value="30">30 集</option>
+                  <option value="custom">自定义</option>
+                </select>
+                {episodeCount === 'custom' && (
+                  <input type="number" value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)}
+                    placeholder="集数" min="3" max="100"
+                    className="input-field w-16 text-sm" />
+                )}
+                <select value={genre} onChange={e => setGenre(e.target.value)}
+                  className="input-field text-sm">
+                  <option value="auto">自动识别</option>
+                  <option value="">不使用模板</option>
+                  <option value="霸总">霸道总裁</option>
+                  <option value="复仇">复仇逆袭</option>
+                  <option value="修仙">修仙玄幻</option>
+                  <option value="甜宠">甜宠恋爱</option>
+                  <option value="悬疑">悬疑推理</option>
+                  <option value="穿越">穿越重生</option>
+                  <option value="都市">都市情感</option>
+                  <option value="古装">古装权谋</option>
+                  <option value="搞笑">搞笑喜剧</option>
+                  <option value="虐恋">虐恋催泪</option>
+                  <option value="职场">职场逆袭</option>
+                  <option value="校园">校园青春</option>
+                  <option value="豪门">豪门恩怨</option>
+                  <option value="战神">战神归来</option>
+                  <option value="赘婿">赘婿逆袭</option>
+                  <option value="重生">重生复仇</option>
+                </select>
+              </>
             )}
-            <select value={genre} onChange={e => setGenre(e.target.value)}
-              className="px-3 py-1.5 bg-gray-800 border border-gray-700 rounded text-sm">
-              <option value="auto">自动识别</option>
-              <option value="">不使用模板</option>
-              <option value="霸总">霸道总裁</option>
-              <option value="复仇">复仇逆袭</option>
-              <option value="修仙">修仙玄幻</option>
-              <option value="甜宠">甜宠恋爱</option>
-              <option value="悬疑">悬疑推理</option>
-              <option value="穿越">穿越重生</option>
-              <option value="都市">都市情感</option>
-              <option value="古装">古装权谋</option>
-              <option value="搞笑">搞笑喜剧</option>
-              <option value="虐恋">虐恋催泪</option>
-              <option value="职场">职场逆袭</option>
-              <option value="校园">校园青春</option>
-              <option value="豪门">豪门恩怨</option>
-              <option value="战神">战神归来</option>
-              <option value="赘婿">赘婿逆袭</option>
-              <option value="重生">重生复仇</option>
-            </select>
+            {projectType === 'video' && (
+              <>
+                <select value={videoDuration} onChange={e => setVideoDuration(e.target.value)}
+                  className="input-field text-sm">
+                  <option value="30">30 秒</option>
+                  <option value="60">1 分钟</option>
+                  <option value="120">2 分钟</option>
+                  <option value="180">3 分钟</option>
+                  <option value="300">5 分钟</option>
+                </select>
+                <select value={genre} onChange={e => setGenre(e.target.value)}
+                  className="input-field text-sm">
+                  <option value="auto">自动识别</option>
+                  <option value="">不使用模板</option>
+                  <option value="寓言">寓言故事</option>
+                  <option value="广告">商业广告</option>
+                  <option value="科普">科普知识</option>
+                  <option value="纪录">纪录短片</option>
+                  <option value="教程">教学教程</option>
+                  <option value="动画">动画故事</option>
+                  <option value="情感">情感故事</option>
+                  <option value="搞笑">搞笑段子</option>
+                </select>
+              </>
+            )}
           </div>
         </div>
 
-        {projects.length === 0 ? (
-          <div className="text-center py-16 text-gray-500">
-            <p className="text-lg">还没有项目</p>
-            <p className="text-sm mt-2">输入名称创建你的第一个短剧项目</p>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {projects.map(project => (
-              <div key={project.id} className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg border border-gray-700">
+        <div className="flex gap-2 mb-4">
+          <button onClick={() => setProjectTab('mine')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${projectTab === 'mine' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+            我的项目
+          </button>
+          <button onClick={() => setProjectTab('public')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition ${projectTab === 'public' ? 'bg-indigo-600 text-white' : 'bg-white/5 text-gray-400 hover:bg-white/10'}`}>
+            公开项目
+          </button>
+        </div>
+
+        {(() => {
+          const filtered = projectTab === 'mine'
+            ? projects.filter(p => p.isOwner !== false)
+            : projects.filter(p => p.isPublic)
+          return filtered.length === 0 ? (
+            <div className="text-center py-16 text-gray-500">
+              <p className="text-lg">{projectTab === 'mine' ? '还没有项目' : '暂无公开项目'}</p>
+              <p className="text-sm mt-2">{projectTab === 'mine' ? '输入名称创建你的第一个短剧项目' : '其他用户公开的项目会显示在这里'}</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {filtered.map(project => (
+              <div key={project.id} className="flex items-center gap-4 p-4 glass-card">
                 {project.coverImage ? (
-                  <img src={project.coverImage.startsWith('http') ? project.coverImage : `/api/file?path=${encodeURIComponent(project.coverImage)}`} alt="" className="w-16 h-20 object-cover rounded" />
+                  <div className="relative group">
+                    <img src={project.coverImage.startsWith('http') ? project.coverImage : `/api/file?path=${encodeURIComponent(project.coverImage)}`} alt="" className="w-16 h-20 object-cover rounded" />
+                    <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center gap-1 rounded">
+                      <button onClick={(e) => { e.stopPropagation(); handleRegenCover(project) }} className="text-xs text-white hover:text-blue-300">重新生成</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDownloadCover(project) }} className="text-xs text-white hover:text-green-300">下载</button>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="w-16 h-20 bg-gray-700 rounded flex items-center justify-center">
-                    <span className="text-xs text-gray-500">无封面</span>
+                  <div className="w-16 h-20 bg-gray-700 rounded flex items-center justify-center cursor-pointer" onClick={() => handleRegenCover(project)}>
+                    <span className="text-xs text-gray-500">生成封面</span>
                   </div>
                 )}
                 <div className="flex-1 cursor-pointer" onClick={() => handleOpen(project)}>
-                  <h3 className="text-lg font-medium">{project.dramaTitle || project.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-medium">{project.dramaTitle || project.name}</h3>
+                    {project.isPublic && <span className="badge badge-green">公开</span>}
+                    {!project.isOwner && <span className="badge badge-gray">他人</span>}
+                  </div>
                   <p className="text-xs text-gray-400">{project.aspectRatio} · {new Date(project.createdAt).toLocaleDateString('zh-CN')}</p>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={() => handleOpen(project)} className="px-4 py-1.5 bg-green-600 hover:bg-green-700 rounded text-sm">打开</button>
-                  <button onClick={() => handleDelete(project.id)} className="px-4 py-1.5 bg-red-600 hover:bg-red-700 rounded text-sm">删除</button>
+                  {project.isOwner !== false && (
+                    <button onClick={(e) => { e.stopPropagation(); handleTogglePublic(project) }}
+                      className={`btn-secondary !py-1.5 !px-3 !text-xs ${project.isPublic ? '!border-amber-500/30 !text-amber-400' : ''}`}>
+                      {project.isPublic ? '设为私有' : '设为公开'}
+                    </button>
+                  )}
+                  <button onClick={() => handleOpen(project)} className="btn-success !py-1.5 !px-4 !text-xs">打开</button>
+                  {project.isOwner !== false && (
+                    <button onClick={() => handleDelete(project.id)} className="btn-danger !py-1.5 !px-4 !text-xs">删除</button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
-        )}
+          )
+        })()}
         </div>
       </div>
     </div>
