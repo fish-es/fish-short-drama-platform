@@ -65,6 +65,18 @@ function runMigrations(db: Database): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`)
   }
+
+  // Add is_public column if missing
+  const projInfo2 = db.exec("PRAGMA table_info(projects)")
+  if (projInfo2.length > 0) {
+    const cols = projInfo2[0].values.map((row: any) => row[1])
+    if (!cols.includes('is_public')) {
+      db.run("ALTER TABLE projects ADD COLUMN is_public INTEGER DEFAULT 0")
+    }
+    if (!cols.includes('project_type')) {
+      db.run("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'drama'")
+    }
+  }
 }
 
 export function saveDatabase(): void {
@@ -84,7 +96,9 @@ CREATE TABLE IF NOT EXISTS projects (
   aspect_ratio TEXT NOT NULL DEFAULT '16:9',
   cover_image TEXT,
   drama_title TEXT,
-  user_id TEXT NOT NULL DEFAULT ''
+  user_id TEXT NOT NULL DEFAULT '',
+  is_public INTEGER NOT NULL DEFAULT 0,
+  project_type TEXT NOT NULL DEFAULT 'drama'
 );
 
 CREATE TABLE IF NOT EXISTS scripts (

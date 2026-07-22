@@ -9,6 +9,9 @@ export interface Project {
   aspectRatio: string
   coverImage: string | null
   dramaTitle: string | null
+  isPublic?: boolean
+  isOwner?: boolean
+  projectType?: string
 }
 
 export interface Episode {

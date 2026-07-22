@@ -15,10 +15,10 @@ export default function Workspace() {
   if (!currentProject) return null
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex flex-col">
-      <header className="flex items-center justify-between px-6 py-3 bg-gray-800 border-b border-gray-700">
+    <div className="min-h-screen text-white flex flex-col">
+      <header className="flex items-center justify-between px-6 py-3 glass-card rounded-none border-x-0 border-t-0">
         <div className="flex items-center gap-4">
-          <button onClick={clearProject} className="px-3 py-1 text-sm bg-gray-700 hover:bg-gray-600 rounded">
+          <button onClick={clearProject} className="btn-secondary px-3 py-1 text-sm">
             ← 返回
           </button>
           <h2 className="text-lg font-medium">{currentProject.dramaTitle || currentProject.name}</h2>
@@ -27,14 +27,14 @@ export default function Workspace() {
       </header>
 
       <main className="flex-1 flex overflow-hidden">
-        <div className="w-1/4 border-r border-gray-700 flex flex-col">
-          <div className="flex items-center gap-1 px-2 py-2 bg-gray-800 border-b border-gray-700">
+        <div className="w-1/4 border-r border-white/10 flex flex-col">
+          <div className="flex items-center gap-1 px-2 py-2 glass-card rounded-none border-x-0 border-t-0">
             <button onClick={() => setLeftTab('script')}
-              className={`px-3 py-1 text-xs rounded ${leftTab === 'script' ? 'bg-blue-600' : 'bg-gray-700 text-gray-400'}`}>
+              className={`px-3 py-1 text-xs rounded ${leftTab === 'script' ? 'bg-indigo-600' : 'btn-secondary text-gray-400'}`}>
               剧本创作
             </button>
             <button onClick={() => setLeftTab('assets')}
-              className={`px-3 py-1 text-xs rounded ${leftTab === 'assets' ? 'bg-blue-600' : 'bg-gray-700 text-gray-400'}`}>
+              className={`px-3 py-1 text-xs rounded ${leftTab === 'assets' ? 'bg-indigo-600' : 'btn-secondary text-gray-400'}`}>
               资产库
             </button>
           </div>
@@ -43,8 +43,8 @@ export default function Workspace() {
           </div>
         </div>
 
-        <div className="w-1/4 border-r border-gray-700 flex flex-col">
-          <div className="px-4 py-2 bg-gray-800 border-b border-gray-700">
+        <div className="w-1/4 border-r border-white/10 flex flex-col">
+          <div className="px-4 py-2 glass-card rounded-none border-x-0 border-t-0">
             <h3 className="text-sm font-medium">剧集管理</h3>
           </div>
           <div className="flex-1 overflow-y-auto">
@@ -53,7 +53,7 @@ export default function Workspace() {
         </div>
 
         <div className="w-1/2 flex flex-col">
-          <div className="px-4 py-2 bg-gray-800 border-b border-gray-700">
+          <div className="px-4 py-2 glass-card rounded-none border-x-0 border-t-0">
             <h3 className="text-sm font-medium">
               {currentEpisodeId ? '场景管理' : '选择一集查看场景'}
             </h3>
@@ -64,7 +64,7 @@ export default function Workspace() {
             )}
           </div>
           {currentEpisodeId && (
-            <div className="border-t border-gray-700">
+            <div className="border-t border-white/10">
               <PipelineControl />
             </div>
           )}
