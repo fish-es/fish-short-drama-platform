@@ -1,8 +1,12 @@
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { describe, expect, it } from 'vitest'
 import {
   getProjectDirectory,
   isPathWithin,
   PROJECTS_DIR,
+  requireExistingFileWithinRoot,
   resolveWithin,
   sanitizeFilename,
 } from './storage.service'
@@ -29,5 +33,28 @@ describe('project storage paths', () => {
 
   it('removes path separators and reserved filename characters', () => {
     expect(sanitizeFilename('../bad:name?.mp4')).toBe('bad_name_.mp4')
+  })
+
+  it('allows legacy files only below a distinct authorized project root', () => {
+    const temporaryRoot = mkdtempSync(join(tmpdir(), 'fish-storage-'))
+    try {
+      const legacyBase = join(temporaryRoot, 'ShortDrama')
+      const projectRoot = join(legacyBase, 'existing-project')
+      const projectFile = join(projectRoot, 'references', 'cover.png')
+      const otherFile = join(legacyBase, 'other-project', 'secret.png')
+      mkdirSync(join(projectRoot, 'references'), { recursive: true })
+      mkdirSync(join(legacyBase, 'other-project'), { recursive: true })
+      writeFileSync(projectFile, 'project')
+      writeFileSync(otherFile, 'other')
+
+      expect(requireExistingFileWithinRoot(projectRoot, projectFile, legacyBase))
+        .toBe(realpathSync(projectFile))
+      expect(() => requireExistingFileWithinRoot(projectRoot, otherFile, legacyBase))
+        .toThrow()
+      expect(() => requireExistingFileWithinRoot(legacyBase, projectFile, legacyBase))
+        .toThrow()
+    } finally {
+      rmSync(temporaryRoot, { recursive: true, force: true })
+    }
   })
 })

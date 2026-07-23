@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     const db = await getDatabase()
     requireSceneAccess(db, sceneId, userId, 'write')
     const rows = db.exec(
-      `SELECT sc.description, sc.dialogue, sc.duration, p.aspect_ratio, p.id, p.user_id
+      `SELECT sc.description, sc.dialogue, sc.duration, p.aspect_ratio, p.id, p.user_id,
+              p.output_path
        FROM scenes sc
        JOIN scripts s ON sc.script_id = s.id
        JOIN projects p ON s.project_id = p.id
@@ -34,6 +35,7 @@ export async function GET(req: NextRequest) {
     const aspectRatio = (rows[0].values[0][3] as string) || '16:9'
     const projectId = rows[0].values[0][4] as string
     const ownerUserId = rows[0].values[0][5] as string
+    const legacyProjectPath = rows[0].values[0][6] as string
 
     const imgRows = db.exec(
       'SELECT file_path FROM image_assets WHERE scene_id = ? AND is_current = 1',
@@ -70,7 +72,12 @@ export async function GET(req: NextRequest) {
       })
       imageBuffer = media.buffer
     } else {
-      const safePath = requireExistingProjectFile(imagePath, ownerUserId, projectId)
+      const safePath = requireExistingProjectFile(
+        imagePath,
+        ownerUserId,
+        projectId,
+        legacyProjectPath,
+      )
       imageBuffer = readFileSync(safePath)
     }
 

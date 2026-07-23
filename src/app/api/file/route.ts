@@ -30,6 +30,7 @@ interface FileDescriptor {
   filePath: string
   ownerUserId: string
   projectId: string
+  legacyProjectPath?: string
   downloadName: string
   attachment: boolean
 }
@@ -66,13 +67,14 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
     const projectId = requireId(req)
     requireProjectAccess(db, projectId, userId, 'read')
     const row = firstRow(db.exec(
-      'SELECT cover_image, user_id, name FROM projects WHERE id = ?',
+      'SELECT cover_image, user_id, name, output_path FROM projects WHERE id = ?',
       [projectId],
     ))
     return {
       filePath: String(row[0] || ''),
       ownerUserId: String(row[1]),
       projectId,
+      legacyProjectPath: String(row[3] || ''),
       downloadName: `${String(row[2])}_封面.png`,
       attachment: false,
     }
@@ -83,7 +85,7 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
     requireAssetAccess(db, assetId, kind, userId, 'read')
     const table = kind === 'character' ? 'characters' : 'locations'
     const row = firstRow(db.exec(
-      `SELECT a.reference_image, p.user_id, p.id, a.name
+      `SELECT a.reference_image, p.user_id, p.id, a.name, p.output_path
        FROM ${table} a
        JOIN projects p ON p.id = a.project_id
        WHERE a.id = ?`,
@@ -93,6 +95,7 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
       filePath: String(row[0] || ''),
       ownerUserId: String(row[1]),
       projectId: String(row[2]),
+      legacyProjectPath: String(row[4] || ''),
       downloadName: `${String(row[3])}.png`,
       attachment: false,
     }
@@ -106,7 +109,8 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
       : `JOIN video_clips media ON media.scene_id = sc.id AND media.status = 'completed'`
     const ordering = kind === 'scene-image' ? '' : 'ORDER BY media.created_at DESC'
     const row = firstRow(db.exec(
-      `SELECT media.file_path, p.user_id, p.id, e.episode_number, sc.scene_order
+      `SELECT media.file_path, p.user_id, p.id, e.episode_number, sc.scene_order,
+              p.output_path
        FROM scenes sc
        JOIN episodes e ON e.id = sc.episode_id
        JOIN scripts s ON s.id = sc.script_id
@@ -122,6 +126,7 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
       filePath: String(row[0] || ''),
       ownerUserId: String(row[1]),
       projectId: String(row[2]),
+      legacyProjectPath: String(row[5] || ''),
       downloadName: `第${String(row[3])}集_场景${Number(row[4]) + 1}.${extension}`,
       attachment: false,
     }
@@ -133,7 +138,7 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
     if (!projectId || !episodeId) throw new RouteError(400, 'projectId and episodeId required')
     requireEpisodeInProject(db, episodeId, projectId, userId)
     const row = firstRow(db.exec(
-      `SELECT p.user_id, p.name, e.episode_number
+      `SELECT p.user_id, p.name, e.episode_number, p.output_path
        FROM projects p
        JOIN scripts s ON s.project_id = p.id
        JOIN episodes e ON e.script_id = s.id
@@ -149,6 +154,7 @@ async function resolveFileDescriptor(req: NextRequest): Promise<FileDescriptor> 
       filePath: join(getProjectDirectory(ownerUserId, projectId), 'output', downloadName),
       ownerUserId,
       projectId,
+      legacyProjectPath: String(row[3] || ''),
       downloadName,
       attachment: true,
     }
@@ -170,6 +176,7 @@ export async function GET(req: NextRequest) {
         descriptor.filePath,
         descriptor.ownerUserId,
         descriptor.projectId,
+        descriptor.legacyProjectPath,
       )
     } catch {
       throw new RouteError(404, '文件不存在')

@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     const db = await getDatabase()
     requireSceneAccess(db, sceneId, userId, 'write')
     const rows = db.exec(
-      `SELECT sc.description, p.id, p.aspect_ratio, p.user_id
+      `SELECT sc.description, p.id, p.aspect_ratio, p.user_id, p.output_path
        FROM scenes sc
        JOIN scripts s ON sc.script_id = s.id
        JOIN projects p ON s.project_id = p.id
@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
     const projectId = rows[0].values[0][1] as string
     const aspectRatio = (rows[0].values[0][2] as string) || '16:9'
     const ownerUserId = rows[0].values[0][3] as string
+    const legacyProjectPath = rows[0].values[0][4] as string
     const sizeMap: Record<string, string> = { '9:16': '768x1024', '16:9': '1024x768', '1:1': '1024x1024' }
     const size = sizeMap[aspectRatio] || '1024x768'
 
@@ -86,7 +87,12 @@ export async function POST(req: NextRequest) {
             referenceImages.push(ref)
           } else if (ref) {
             try {
-              const safePath = requireExistingProjectFile(ref, ownerUserId, projectId)
+              const safePath = requireExistingProjectFile(
+                ref,
+                ownerUserId,
+                projectId,
+                legacyProjectPath,
+              )
               referenceImages.push(`data:image/png;base64,${readFileSync(safePath).toString('base64')}`)
             } catch {}
           }
@@ -100,7 +106,12 @@ export async function POST(req: NextRequest) {
             referenceImages.push(ref)
           } else if (ref) {
             try {
-              const safePath = requireExistingProjectFile(ref, ownerUserId, projectId)
+              const safePath = requireExistingProjectFile(
+                ref,
+                ownerUserId,
+                projectId,
+                legacyProjectPath,
+              )
               referenceImages.push(`data:image/png;base64,${readFileSync(safePath).toString('base64')}`)
             } catch {}
           }

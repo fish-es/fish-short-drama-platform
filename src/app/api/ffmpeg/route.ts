@@ -52,12 +52,13 @@ export async function POST(req: NextRequest) {
     requireEpisodeInProject(db, episodeId, projectId, userId)
 
     const projRows = db.exec(
-      'SELECT name, aspect_ratio FROM projects WHERE id = ? AND user_id = ?',
+      'SELECT name, aspect_ratio, output_path FROM projects WHERE id = ? AND user_id = ?',
       [projectId, userId],
     )
     if (!projRows.length || !projRows[0].values.length) throw new RouteError(404, 'Project not found')
     const projectName = projRows[0].values[0][0] as string
     const aspectRatio = (projRows[0].values[0][1] as string) || '16:9'
+    const legacyProjectPath = projRows[0].values[0][2] as string
     const projectPath = getProjectDirectory(userId, projectId)
 
     const epRows = db.exec(
@@ -121,7 +122,12 @@ export async function POST(req: NextRequest) {
         })
         writeFileSync(localPath, media.buffer)
       } else {
-        const safeSource = requireExistingProjectFile(scene.videoPath, userId, projectId)
+        const safeSource = requireExistingProjectFile(
+          scene.videoPath,
+          userId,
+          projectId,
+          legacyProjectPath,
+        )
         copyFileSync(safeSource, localPath)
       }
       localVideoPaths.push(localPath)
