@@ -1,48 +1,73 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
-import { join } from 'path'
-import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs'
+import { readFileSync } from 'fs'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateImage } from '@/services/agnes.service'
-import { getUserId } from '@/services/user.service'
+import { validateRemoteMediaUrl } from '@/services/remote-media.service'
+import { requireExistingProjectFile } from '@/services/storage.service'
+import {
+  requireAuth,
+  requireEpisodeAccess,
+  requireSceneAccess,
+  routeErrorResponse,
+  RouteError,
+} from '@/services/security.service'
 
 export async function GET(req: NextRequest) {
-  const episodeId = req.nextUrl.searchParams.get('episodeId')
-  if (!episodeId) return NextResponse.json({ error: 'episodeId required' }, { status: 400 })
+  try {
+    const { userId } = requireAuth(req)
+    const episodeId = req.nextUrl.searchParams.get('episodeId')
+    if (!episodeId) throw new RouteError(400, 'episodeId required')
 
-  const db = await getDatabase()
-  const rows = db.exec(
-    'SELECT id, script_id, description, dialogue, characters, duration, scene_order, state, error_message, retry_count FROM scenes WHERE episode_id = ? ORDER BY scene_order',
-    [episodeId]
-  )
-  if (!rows.length || !rows[0].values.length) return NextResponse.json([])
-  return NextResponse.json(rows[0].values.map(row => ({
-    id: row[0], scriptId: row[1], description: row[2], dialogue: row[3],
-    characters: JSON.parse(row[4] as string), duration: row[5], order: row[6],
-    state: row[7], errorMessage: row[8], retryCount: row[9]
-  })))
+    const db = await getDatabase()
+    requireEpisodeAccess(db, episodeId, userId, 'read')
+    const rows = db.exec(
+      'SELECT id, script_id, description, dialogue, characters, duration, scene_order, state, error_message, retry_count FROM scenes WHERE episode_id = ? ORDER BY scene_order',
+      [episodeId],
+    )
+    if (!rows.length || !rows[0].values.length) return NextResponse.json([])
+    return NextResponse.json(rows[0].values.map(row => ({
+      id: row[0],
+      scriptId: row[1],
+      description: row[2],
+      dialogue: row[3],
+      characters: JSON.parse(row[4] as string),
+      duration: row[5],
+      order: row[6],
+      state: row[7],
+      errorMessage: row[8],
+      retryCount: row[9],
+    })))
+  } catch (error) {
+    return routeErrorResponse(error)
+  }
 }
 
 // Generate image for a scene
 export async function POST(req: NextRequest) {
-  const { sceneId, action } = await req.json()
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  try {
+    const { apiKey, userId } = requireAuth(req)
+    const { sceneId, action } = await req.json()
+    if (typeof sceneId !== 'string' || action !== 'generateImage') {
+      throw new RouteError(400, '请求参数无效')
+    }
 
-  const db = await getDatabase()
-
-  if (action === 'generateImage') {
-    const userId = getUserId(apiKey)
+    const db = await getDatabase()
+    requireSceneAccess(db, sceneId, userId, 'write')
     const rows = db.exec(
-      "SELECT sc.description, p.output_path, p.id, p.aspect_ratio FROM scenes sc JOIN scripts s ON sc.script_id = s.id JOIN projects p ON s.project_id = p.id WHERE sc.id = ? AND p.user_id = ?",
-      [sceneId, userId]
+      `SELECT sc.description, p.id, p.aspect_ratio, p.user_id
+       FROM scenes sc
+       JOIN scripts s ON sc.script_id = s.id
+       JOIN projects p ON s.project_id = p.id
+       WHERE sc.id = ?`,
+      [sceneId],
     )
-    if (!rows.length || !rows[0].values.length) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
+    if (!rows.length || !rows[0].values.length) throw new RouteError(404, 'Scene not found')
 
     const description = rows[0].values[0][0] as string
-    const projectPath = rows[0].values[0][1] as string
-    const projectId = rows[0].values[0][2] as string
-    const aspectRatio = (rows[0].values[0][3] as string) || '16:9'
+    const projectId = rows[0].values[0][1] as string
+    const aspectRatio = (rows[0].values[0][2] as string) || '16:9'
+    const ownerUserId = rows[0].values[0][3] as string
     const sizeMap: Record<string, string> = { '9:16': '768x1024', '16:9': '1024x768', '1:1': '1024x1024' }
     const size = sizeMap[aspectRatio] || '1024x768'
 
@@ -57,8 +82,13 @@ export async function POST(req: NextRequest) {
         const charRows = db.exec("SELECT reference_image FROM characters WHERE project_id = ? AND name = ?", [projectId, name])
         if (charRows.length && charRows[0].values.length) {
           const ref = charRows[0].values[0][0] as string | null
-          if (ref && existsSync(ref)) {
-            referenceImages.push(`data:image/png;base64,${readFileSync(ref).toString('base64')}`)
+          if (ref?.startsWith('http')) {
+            referenceImages.push(ref)
+          } else if (ref) {
+            try {
+              const safePath = requireExistingProjectFile(ref, ownerUserId, projectId)
+              referenceImages.push(`data:image/png;base64,${readFileSync(safePath).toString('base64')}`)
+            } catch {}
           }
         }
       }
@@ -66,8 +96,13 @@ export async function POST(req: NextRequest) {
         const locRows = db.exec("SELECT reference_image FROM locations WHERE project_id = ? AND name = ?", [projectId, locationName])
         if (locRows.length && locRows[0].values.length) {
           const ref = locRows[0].values[0][0] as string | null
-          if (ref && existsSync(ref)) {
-            referenceImages.push(`data:image/png;base64,${readFileSync(ref).toString('base64')}`)
+          if (ref?.startsWith('http')) {
+            referenceImages.push(ref)
+          } else if (ref) {
+            try {
+              const safePath = requireExistingProjectFile(ref, ownerUserId, projectId)
+              referenceImages.push(`data:image/png;base64,${readFileSync(safePath).toString('base64')}`)
+            } catch {}
           }
         }
       }
@@ -95,7 +130,13 @@ export async function POST(req: NextRequest) {
     saveDatabase()
 
     try {
-      const imageUrl = await generateImage(enhancedPrompt, size, apiKey, referenceImages.length > 0 ? referenceImages : undefined)
+      const generatedUrl = await generateImage(
+        enhancedPrompt,
+        size,
+        apiKey,
+        referenceImages.length > 0 ? referenceImages : undefined,
+      )
+      const imageUrl = await validateRemoteMediaUrl(generatedUrl)
 
       const imageId = uuid()
       // Store URL directly, no server download
@@ -106,12 +147,13 @@ export async function POST(req: NextRequest) {
       saveDatabase()
 
       return NextResponse.json({ id: imageId, filePath: imageUrl, prompt: enhancedPrompt, size })
-    } catch (e: any) {
-      db.run("UPDATE scenes SET state = 'ERROR', error_message = ? WHERE id = ?", [e.message, sceneId])
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '图片生成失败'
+      db.run("UPDATE scenes SET state = 'ERROR', error_message = ? WHERE id = ?", [message, sceneId])
       saveDatabase()
-      return NextResponse.json({ error: e.message }, { status: 500 })
+      throw new RouteError(500, message)
     }
+  } catch (error) {
+    return routeErrorResponse(error)
   }
-
-  return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
 }

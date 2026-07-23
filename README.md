@@ -41,7 +41,9 @@ npm run dev
 - 视频生成: agnes-video-v2.0
 
 注册 Agnes AI 账号后，在控制台创建 API Key。新用户有免费额度。
-API Key 存储在浏览器 localStorage 中，不会上传到服务器。
+API Key 存储在浏览器 localStorage 中。生成请求会将 Key 发送给 Agnes AI；项目 API
+也会把 Key 发送到本应用服务器，用它派生当前用户标识。因此公网部署必须启用 HTTPS，
+并避免在共享或不受信任设备上保存 Key。
 
 ## Docker 部署
 
@@ -90,8 +92,8 @@ docker run -d -p 3000:3000 -v ~/fish-drama-data:/app/data --name fish-drama fish
 
 1. 来到本仓库，点击 "New Pull Request"
 2. 选择 base 分支为 `dev`，compare 为你的功能分支
-3. **第一次提交**：标题写 `test`，等待自动部署到预览环境
-4. 机器人会评论预览地址，点进去验证你的功能
+3. 提交 PR 后，GitHub Actions 会在隔离的 GitHub 托管运行器中自动执行测试和生产构建
+4. 等待 `Validate Pull Request` 检查通过，并在本地验证功能
 5. 验证通过后，**编辑 PR**：
    - 标题改为 Issue 编号，如 `fix #12` 或 `feat #15`
    - 描述里写清楚你解决了什么问题
@@ -119,7 +121,7 @@ docker run -d -p 3000:3000 -v ~/fish-drama-data:/app/data --name fish-drama fish
 |------|------|---------|
 | Production | 3000 | push 到 main |
 | Development | 3001 | push 到 dev |
-| Preview | 3002 | PR 到 dev |
+| Pull Request | 不部署 | PR 到 dev 时运行隔离测试和生产构建 |
 
 ## 项目结构
 

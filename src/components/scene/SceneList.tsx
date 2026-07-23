@@ -3,11 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
 import { sceneApi } from '@/services/api.client'
-
-function assetUrl(path: string): string {
-  if (path.startsWith('http')) return path
-  return `/api/file?path=${encodeURIComponent(path)}`
-}
+import { ProtectedImage, ProtectedVideo } from '@/components/common/ProtectedMedia'
 
 const isOwnerProject = () => useAppStore.getState().currentProject?.isOwner !== false
 
@@ -15,7 +11,7 @@ export default function SceneList() {
   const { scenes, updateScene } = useAppStore()
   const [images, setImages] = useState<Record<string, string>>({})
   const [videos, setVideos] = useState<Record<string, string>>({})
-  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  const [previewImage, setPreviewImage] = useState<{ source: string; sceneId: string } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDesc, setEditDesc] = useState('')
   const [editDialogue, setEditDialogue] = useState('')
@@ -23,13 +19,17 @@ export default function SceneList() {
   useEffect(() => {
     scenes.forEach(scene => {
       if ((scene.state === 'IMG_READY' || scene.state === 'VIDEO_READY') && !images[scene.id]) {
-        fetch(`/api/scene/image?sceneId=${scene.id}`)
+        fetch(`/api/scene/image?sceneId=${scene.id}`, {
+          headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+        })
           .then(res => res.json())
           .then(data => { if (data.filePath) setImages(prev => ({ ...prev, [scene.id]: data.filePath })) })
           .catch(() => {})
       }
       if (scene.state === 'VIDEO_READY' && !videos[scene.id]) {
-        fetch(`/api/scene/video?sceneId=${scene.id}`)
+        fetch(`/api/scene/video?sceneId=${scene.id}`, {
+          headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+        })
           .then(res => res.json())
           .then(data => { if (data.filePath) setVideos(prev => ({ ...prev, [scene.id]: data.filePath })) })
           .catch(() => {})
@@ -110,16 +110,25 @@ export default function SceneList() {
           )}
 
           {images[scene.id] && (
-            <div className="mb-2 cursor-pointer" onClick={() => setPreviewImage(images[scene.id])}>
-              <img src={assetUrl(images[scene.id])} alt={`Scene ${i + 1}`}
-                className="w-full h-40 object-cover rounded hover:opacity-90 transition" />
+            <div className="mb-2 cursor-pointer">
+              <ProtectedImage
+                source={images[scene.id]}
+                protectedUrl={`/api/file?kind=scene-image&id=${encodeURIComponent(scene.id)}`}
+                alt={`Scene ${i + 1}`}
+                className="w-full h-40 object-cover rounded hover:opacity-90 transition"
+                onClick={() => setPreviewImage({ source: images[scene.id], sceneId: scene.id })}
+              />
             </div>
           )}
 
           {videos[scene.id] && (
             <div className="mb-2">
-              <video src={assetUrl(videos[scene.id])} controls
-                className="w-full h-32 rounded" />
+              <ProtectedVideo
+                source={videos[scene.id]}
+                protectedUrl={`/api/file?kind=scene-video&id=${encodeURIComponent(scene.id)}`}
+                controls
+                className="w-full h-32 rounded"
+              />
             </div>
           )}
 
@@ -152,8 +161,12 @@ export default function SceneList() {
       {previewImage && (
         <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 cursor-pointer"
           onClick={() => setPreviewImage(null)}>
-          <img src={assetUrl(previewImage)} alt="Preview"
-            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg" />
+          <ProtectedImage
+            source={previewImage.source}
+            protectedUrl={`/api/file?kind=scene-image&id=${encodeURIComponent(previewImage.sceneId)}`}
+            alt="Preview"
+            className="max-w-[90vw] max-h-[90vh] object-contain rounded-lg"
+          />
         </div>
       )}
     </div>

@@ -2,12 +2,28 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
+import { ProtectedImage } from '@/components/common/ProtectedMedia'
 
 interface Character {
   id: string; name: string; description: string; voiceId: string; referenceImage: string | null; keywords: string
 }
 interface Location {
   id: string; name: string; description: string; referenceImage: string | null; keywords: string
+}
+
+async function requestAssets(projectId: string): Promise<{
+  characters: Character[]
+  locations: Location[]
+}> {
+  const headers = { 'x-api-key': localStorage.getItem('agnes_api_key') || '' }
+  const [characters, locations] = await Promise.all([
+    fetch(`/api/asset?projectId=${projectId}&type=characters`, { headers }).then(res => res.json()),
+    fetch(`/api/asset?projectId=${projectId}&type=locations`, { headers }).then(res => res.json()),
+  ])
+  return {
+    characters: Array.isArray(characters) ? characters : [],
+    locations: Array.isArray(locations) ? locations : [],
+  }
 }
 
 export default function AssetLibrary() {
@@ -19,20 +35,25 @@ export default function AssetLibrary() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editKeywords, setEditKeywords] = useState('')
 
-  useEffect(() => {
-    if (!currentProject) return
-    loadAssets()
-  }, [currentProject])
-
   const loadAssets = async () => {
     if (!currentProject) return
-    const [chars, locs] = await Promise.all([
-      fetch(`/api/asset?projectId=${currentProject.id}&type=characters`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json()),
-      fetch(`/api/asset?projectId=${currentProject.id}&type=locations`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }).then(r => r.json())
-    ])
-    setCharacters(Array.isArray(chars) ? chars : [])
-    setLocations(Array.isArray(locs) ? locs : [])
+    const assets = await requestAssets(currentProject.id)
+    setCharacters(assets.characters)
+    setLocations(assets.locations)
   }
+
+  useEffect(() => {
+    if (!currentProject) return
+    let cancelled = false
+    requestAssets(currentProject.id).then(assets => {
+      if (cancelled) return
+      setCharacters(assets.characters)
+      setLocations(assets.locations)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [currentProject])
 
   const handleRegenerate = async (id: string, keywords: string) => {
     if (!currentProject) return
@@ -54,12 +75,6 @@ export default function AssetLibrary() {
     })
     setEditingId(null)
     loadAssets()
-  }
-
-  const assetUrl = (path: string | null) => {
-    if (!path) return ''
-    if (path.startsWith('http')) return path
-    return `/api/file?path=${encodeURIComponent(path)}`
   }
 
   const items = tab === 'characters' ? characters : locations
@@ -85,8 +100,12 @@ export default function AssetLibrary() {
           <div key={item.id} className="glass-card p-3">
             <div className="flex items-start gap-3">
               {item.referenceImage ? (
-                <img src={assetUrl(item.referenceImage)}
-                  alt={item.name} className="w-16 h-16 object-cover rounded flex-shrink-0" />
+                <ProtectedImage
+                  source={item.referenceImage}
+                  protectedUrl={`/api/file?kind=${tab === 'characters' ? 'character' : 'location'}&id=${encodeURIComponent(item.id)}`}
+                  alt={item.name}
+                  className="w-16 h-16 object-cover rounded flex-shrink-0"
+                />
               ) : (
                 <div className="w-16 h-16 bg-white/5 rounded flex items-center justify-center flex-shrink-0">
                   <span className="text-xs text-gray-500">无图</span>
