@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function POST(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
 
   const { episodeId, scriptId, scenes } = await req.json()
   if (!episodeId || !scriptId || !scenes) return NextResponse.json({ error: 'Missing fields' }, { status: 400 })
 
-  const userId = getUserId(apiKey)
+  const userId = user.id
   const db = await getDatabase()
 
   const projCheck = db.exec(

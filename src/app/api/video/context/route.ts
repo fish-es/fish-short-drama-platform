@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function GET(req: NextRequest) {
   const sceneId = req.nextUrl.searchParams.get('sceneId')
   if (!sceneId) return NextResponse.json({ error: 'sceneId required' }, { status: 400 })
 
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  const userId = user.id
   const db = await getDatabase()
 
   const rows = db.exec(

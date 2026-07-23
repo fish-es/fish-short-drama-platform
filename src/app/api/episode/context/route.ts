@@ -1,16 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 import { parseOutlineResponse } from '@/services/script.service'
 
 export async function GET(req: NextRequest) {
   const episodeId = req.nextUrl.searchParams.get('episodeId')
   if (!episodeId) return NextResponse.json({ error: 'episodeId required' }, { status: 400 })
 
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  const userId = user.id
   const db = await getDatabase()
 
   // Verify ownership

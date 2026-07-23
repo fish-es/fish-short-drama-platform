@@ -5,6 +5,8 @@ import { useAppStore } from '@/store'
 import { projectApi } from '@/services/api.client'
 import { setApiKey } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
+import type { AuthUser } from '@/services/auth.service'
+import AccountMenu from '@/components/auth/AccountMenu'
 
 interface FeedbackItem {
   id: string
@@ -13,7 +15,7 @@ interface FeedbackItem {
   createdAt: string
 }
 
-export default function Home() {
+export default function Home({ user }: { user: AuthUser }) {
   const { projects, setProjects, setCurrentProject, setEpisodes, setGenre: setStoreGenre, setEpisodeCount: setStoreEpisodeCount } = useAppStore()
   const [newName, setNewName] = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
@@ -33,7 +35,6 @@ export default function Home() {
   const [commits, setCommits] = useState<any[]>([])
   const [changelog, setChangelog] = useState<any[]>([])
   const [changelogContent, setChangelogContent] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
   const [showTutorial, setShowTutorial] = useState(false)
   const [showFeedbackGuide, setShowFeedbackGuide] = useState(false)
   const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
@@ -49,17 +50,7 @@ export default function Home() {
     fetch('/contributors.json').then(r => r.ok ? r.json() : null).then(d => d && setContributors(d)).catch(() => {})
   }, [setProjects])
 
-  useEffect(() => {
-    const key = localStorage.getItem('agnes_api_key') || ''
-    if (key && typeof crypto !== 'undefined' && crypto.subtle) {
-      crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
-        .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16))
-        .then(hash => setIsAdmin(hash === '90af35f948de349b'))
-        .catch(() => {})
-    } else {
-      setIsAdmin(false)
-    }
-  }, [apiKey])
+  const isAdmin = user.role === 'admin'
 
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -318,6 +309,7 @@ export default function Home() {
               <button onClick={() => setShowKey(!showKey)} className="btn-secondary !text-xs">
                 ⚙ API Key
               </button>
+              <AccountMenu user={user} />
             </div>
           </div>
 

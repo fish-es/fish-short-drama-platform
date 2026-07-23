@@ -1,4 +1,4 @@
-// API client - all requests go through here with the API key from localStorage
+// Agnes credentials remain client-managed; account identity comes from the HttpOnly session cookie.
 
 function getApiKey(): string {
   if (typeof window === 'undefined') return ''
@@ -22,6 +22,9 @@ async function api(url: string, options: RequestInit = {}): Promise<any> {
 
   const res = await fetch(url, { ...options, headers })
   const data = await res.json()
+  if (res.status === 401 && data.code === 'UNAUTHENTICATED' && typeof window !== 'undefined') {
+    window.location.assign('/login')
+  }
   if (!res.ok) throw new Error(data.error || `请求失败: ${res.status}`)
   return data
 }

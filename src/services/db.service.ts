@@ -1,8 +1,8 @@
 import initSqlJs, { Database } from 'sql.js'
-import { join } from 'path'
+import { join, resolve } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 
-const DATA_DIR = join(process.cwd(), 'data')
+const DATA_DIR = process.env.FISH_DATA_DIR ? resolve(process.env.FISH_DATA_DIR) : join(process.cwd(), 'data')
 const DB_PATH = join(DATA_DIR, 'short-drama.db')
 
 // Use global to persist DB across hot reloads in dev mode
@@ -77,6 +77,14 @@ function runMigrations(db: Database): void {
       db.run("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'drama'")
     }
   }
+
+  const userInfo = db.exec("PRAGMA table_info(users)")
+  if (userInfo.length > 0) {
+    const columns = userInfo[0].values.map((row: any) => row[1])
+    if (!columns.includes('role')) {
+      db.run("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+    }
+  }
 }
 
 export function saveDatabase(): void {
@@ -87,6 +95,26 @@ export function saveDatabase(): void {
 }
 
 const SCHEMA = `
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash TEXT NOT NULL,
+  password_salt TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'user',
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+
 CREATE TABLE IF NOT EXISTS projects (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,

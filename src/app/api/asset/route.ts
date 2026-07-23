@@ -3,17 +3,16 @@ import { join } from 'path'
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateImage } from '@/services/agnes.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function GET(req: NextRequest) {
   const projectId = req.nextUrl.searchParams.get('projectId')
   const type = req.nextUrl.searchParams.get('type')
   if (!projectId || !type) return NextResponse.json({ error: 'projectId and type required' }, { status: 400 })
 
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  const userId = user.id
   const db = await getDatabase()
 
   const projCheck = db.exec("SELECT id FROM projects WHERE id = ? AND (user_id = ? OR is_public = 1)", [projectId, userId])
@@ -34,13 +33,15 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const { id, type, keywords, projectId, action } = await req.json()
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 400 })
 
   if (action === 'regenerate') {
     const db = await getDatabase()
-    const userId = getUserId(apiKey)
+    const userId = user.id
     const projRows = db.exec("SELECT output_path FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
     if (!projRows.length) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
     const projectPath = projRows[0].values[0][0] as string
@@ -78,7 +79,15 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   const { id, type, keywords } = await req.json()
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const db = await getDatabase()
+
+  const ownershipQuery = type === 'character'
+    ? 'SELECT c.id FROM characters c JOIN projects p ON p.id = c.project_id WHERE c.id = ? AND p.user_id = ?'
+    : 'SELECT l.id FROM locations l JOIN projects p ON p.id = l.project_id WHERE l.id = ? AND p.user_id = ?'
+  const ownership = db.exec(ownershipQuery, [id, user.id])
+  if (!ownership.length || !ownership[0].values.length) return NextResponse.json({ error: '资源不存在' }, { status: 404 })
 
   if (type === 'character') {
     db.run("UPDATE characters SET keywords = ? WHERE id = ?", [keywords, id])

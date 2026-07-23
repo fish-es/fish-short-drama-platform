@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
-
-const ADMIN_USER_ID = '90af35f948de349b'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function GET() {
   const db = await getDatabase()
@@ -15,11 +13,9 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
-  if (userId !== ADMIN_USER_ID) return NextResponse.json({ error: '无权限' }, { status: 403 })
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  if (user.role !== 'admin') return NextResponse.json({ error: '无权限' }, { status: 403 })
 
   const { content } = await req.json()
   if (!content || !content.trim()) return NextResponse.json({ error: '内容不能为空' }, { status: 400 })
@@ -33,11 +29,9 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
-  if (userId !== ADMIN_USER_ID) return NextResponse.json({ error: '无权限' }, { status: 403 })
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  if (user.role !== 'admin') return NextResponse.json({ error: '无权限' }, { status: 403 })
 
   const { id } = await req.json()
   const db = await getDatabase()

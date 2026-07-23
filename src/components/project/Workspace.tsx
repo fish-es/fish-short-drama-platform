@@ -7,8 +7,10 @@ import EpisodeList from '@/components/episode/EpisodeList'
 import SceneList from '@/components/scene/SceneList'
 import PipelineControl from '@/components/pipeline/PipelineControl'
 import AssetLibrary from '@/components/assets/AssetLibrary'
+import type { AuthUser } from '@/services/auth.service'
+import AccountMenu from '@/components/auth/AccountMenu'
 
-export default function Workspace() {
+export default function Workspace({ user }: { user: AuthUser }) {
   const { currentProject, clearProject, currentEpisodeId } = useAppStore()
   const [leftTab, setLeftTab] = useState<'script' | 'assets'>('script')
 
@@ -23,7 +25,10 @@ export default function Workspace() {
           </button>
           <h2 className="text-lg font-medium">{currentProject.dramaTitle || currentProject.name}</h2>
         </div>
-        <span className="text-sm text-gray-400">{currentProject.aspectRatio}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{currentProject.aspectRatio}</span>
+          <AccountMenu user={user} />
+        </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden">

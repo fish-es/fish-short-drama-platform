@@ -2,8 +2,10 @@
 
 import { useState } from 'react'
 import { setApiKey } from '@/services/api.client'
+import type { AuthUser } from '@/services/auth.service'
+import AccountMenu from '@/components/auth/AccountMenu'
 
-export default function SetupKey({ onComplete }: { onComplete: () => void }) {
+export default function SetupKey({ user, onComplete }: { user: AuthUser; onComplete: () => void }) {
   const [key, setKey] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -15,7 +17,8 @@ export default function SetupKey({ onComplete }: { onComplete: () => void }) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+    <div className="relative min-h-screen bg-gray-900 text-white flex items-center justify-center">
+      <div className="absolute right-4 top-4"><AccountMenu user={user} /></div>
       <div className="bg-gray-800 rounded-xl p-6 max-w-lg w-full mx-4 border border-gray-700">
         <h2 className="text-2xl font-bold mb-2 text-center">欢迎使用短剧开发平台</h2>
         <p className="text-gray-400 text-center mb-6">请填写你的 Agnes AI API Key 以开始使用</p>

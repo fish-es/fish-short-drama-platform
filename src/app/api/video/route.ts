@@ -4,15 +4,17 @@ import { join } from 'path'
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateVideo, pollVideoStatus } from '@/services/agnes.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const { sceneId } = await req.json()
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 400 })
 
   const db = await getDatabase()
-  const userId = getUserId(apiKey)
+  const userId = user.id
   const rows = db.exec(
     "SELECT sc.description, sc.dialogue, sc.duration, p.output_path, p.aspect_ratio FROM scenes sc JOIN scripts s ON sc.script_id = s.id JOIN projects p ON s.project_id = p.id WHERE sc.id = ? AND p.user_id = ?",
     [sceneId, userId]

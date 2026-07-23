@@ -2,16 +2,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateEpisodeScenes, parseEpisodeScenesResponse, parseOutlineResponse } from '@/services/script.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function GET(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const scriptId = req.nextUrl.searchParams.get('scriptId')
   if (!scriptId) return NextResponse.json({ error: 'scriptId required' }, { status: 400 })
 
   const db = await getDatabase()
   const rows = db.exec(
-    "SELECT id, episode_number, title, summary, status FROM episodes WHERE script_id = ? ORDER BY episode_number",
-    [scriptId]
+    `SELECT e.id, e.episode_number, e.title, e.summary, e.status
+     FROM episodes e JOIN scripts s ON s.id = e.script_id JOIN projects p ON p.id = s.project_id
+     WHERE e.script_id = ? AND (p.user_id = ? OR p.is_public = 1) ORDER BY e.episode_number`,
+    [scriptId, user.id]
   )
   if (!rows.length || !rows[0].values.length) return NextResponse.json([])
   return NextResponse.json(rows[0].values.map((row: any) => ({
@@ -20,14 +24,16 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const { episodeId, projectId } = await req.json()
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 400 })
 
   const db = await getDatabase()
 
   // Verify ownership
-  const userId = getUserId(apiKey)
+  const userId = user.id
   const projCheck = db.exec(
     "SELECT p.id FROM projects p JOIN scripts s ON s.project_id = p.id JOIN episodes e ON e.script_id = s.id WHERE e.id = ? AND p.user_id = ?",
     [episodeId, userId]

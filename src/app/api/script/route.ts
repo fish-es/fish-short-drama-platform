@@ -3,16 +3,18 @@ import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateImage } from '@/services/agnes.service'
 import { generateOutline, parseOutlineResponse } from '@/services/script.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const { prompt, projectId } = await req.json()
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 400 })
 
   const db = await getDatabase()
 
-  const userId = getUserId(apiKey)
+  const userId = user.id
   const projRows = db.exec("SELECT output_path, aspect_ratio FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
   if (!projRows.length || !projRows[0].values.length) {
     return NextResponse.json({ error: 'Project not found' }, { status: 404 })

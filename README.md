@@ -21,7 +21,7 @@
 - AI 视频生成（中文对白，自动计算时长）
 - 自动流水线（图片→视频，失败自动重试）
 - FFmpeg 合成成片 + 字幕
-- 多用户隔离（基于 API Key）
+- 邮箱账户登录与多用户数据隔离
 - 资产库管理（角色/场景参考图）
 
 ## 本地运行
@@ -31,7 +31,15 @@ npm install
 npm run dev
 ```
 
-访问 http://localhost:3000，设置你的 Agnes API Key 即可使用。
+访问 http://localhost:3000，注册账户并设置你的 Agnes API Key 即可使用。
+
+## 账户与会话
+
+- 密码在服务端使用 `scrypt` 加盐哈希后保存。
+- 登录会话保存在数据库中，浏览器只接收 `HttpOnly` Cookie，有效期为 30 天。
+- 可通过 `ADMIN_EMAILS` 环境变量设置管理员邮箱，多个邮箱使用逗号分隔。
+- 数据目录默认是项目下的 `data`，可通过 `FISH_DATA_DIR` 覆盖。
+- 生产环境 Cookie 默认只允许 HTTPS；仅在本地以生产模式运行 HTTP 时，可设置 `AUTH_COOKIE_SECURE=false`。
 
 ## API Key
 
@@ -41,7 +49,7 @@ npm run dev
 - 视频生成: agnes-video-v2.0
 
 注册 Agnes AI 账号后，在控制台创建 API Key。新用户有免费额度。
-API Key 存储在浏览器 localStorage 中，不会上传到服务器。
+API Key 存储在浏览器 localStorage 中，仅在模型调用和旧项目迁移时发送，服务端不会持久化保存。
 
 ## Docker 部署
 

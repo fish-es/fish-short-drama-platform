@@ -4,16 +4,20 @@ import { join } from 'path'
 import { writeFileSync, readFileSync, mkdirSync, existsSync } from 'fs'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateImage } from '@/services/agnes.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 export async function GET(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const episodeId = req.nextUrl.searchParams.get('episodeId')
   if (!episodeId) return NextResponse.json({ error: 'episodeId required' }, { status: 400 })
 
   const db = await getDatabase()
   const rows = db.exec(
-    'SELECT id, script_id, description, dialogue, characters, duration, scene_order, state, error_message, retry_count FROM scenes WHERE episode_id = ? ORDER BY scene_order',
-    [episodeId]
+    `SELECT sc.id, sc.script_id, sc.description, sc.dialogue, sc.characters, sc.duration, sc.scene_order, sc.state, sc.error_message, sc.retry_count
+     FROM scenes sc JOIN scripts s ON s.id = sc.script_id JOIN projects p ON p.id = s.project_id
+     WHERE sc.episode_id = ? AND (p.user_id = ? OR p.is_public = 1) ORDER BY sc.scene_order`,
+    [episodeId, user.id]
   )
   if (!rows.length || !rows[0].values.length) return NextResponse.json([])
   return NextResponse.json(rows[0].values.map(row => ({
@@ -25,14 +29,16 @@ export async function GET(req: NextRequest) {
 
 // Generate image for a scene
 export async function POST(req: NextRequest) {
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
   const { sceneId, action } = await req.json()
   const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 400 })
 
   const db = await getDatabase()
 
   if (action === 'generateImage') {
-    const userId = getUserId(apiKey)
+    const userId = user.id
     const rows = db.exec(
       "SELECT sc.description, p.output_path, p.id, p.aspect_ratio FROM scenes sc JOIN scripts s ON sc.script_id = s.id JOIN projects p ON s.project_id = p.id WHERE sc.id = ? AND p.user_id = ?",
       [sceneId, userId]

@@ -3,7 +3,7 @@ import { join } from 'path'
 import { writeFileSync, existsSync, mkdirSync, unlinkSync, copyFileSync } from 'fs'
 import { execFile } from 'child_process'
 import { getDatabase, saveDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import { getCurrentUser } from '@/services/auth.service'
 
 function getFfmpegPath(): string {
   const cwd = /* turbopackIgnore: true */ process.cwd()
@@ -32,10 +32,9 @@ function runFfmpegCmd(args: string[]): Promise<void> {
 
 export async function POST(req: NextRequest) {
   const { projectId, episodeId, subtitles = true } = await req.json()
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
-
-  const userId = getUserId(apiKey)
+  const user = await getCurrentUser(req)
+  if (!user) return NextResponse.json({ error: '登录已过期', code: 'UNAUTHENTICATED' }, { status: 401 })
+  const userId = user.id
   const db = await getDatabase()
   const projRows = db.exec("SELECT output_path, name, aspect_ratio FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
   if (!projRows.length || !projRows[0].values.length) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
