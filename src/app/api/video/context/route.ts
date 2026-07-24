@@ -65,20 +65,25 @@ export async function GET(req: NextRequest) {
     const { width, height } = dims[aspectRatio] || dims['16:9']
 
     let imageBuffer: Buffer
-    if (imagePath.startsWith('http')) {
-      const media = await fetchRemoteMedia(imagePath, {
-        allowedContentTypes: ['image/'],
-        maxBytes: 25 * 1024 * 1024,
-      })
-      imageBuffer = media.buffer
-    } else {
-      const safePath = requireExistingProjectFile(
-        imagePath,
-        ownerUserId,
-        projectId,
-        legacyProjectPath,
-      )
-      imageBuffer = readFileSync(safePath)
+    try {
+      if (imagePath.startsWith('http')) {
+        const media = await fetchRemoteMedia(imagePath, {
+          allowedContentTypes: ['image/'],
+          maxBytes: 25 * 1024 * 1024,
+        })
+        imageBuffer = media.buffer
+      } else {
+        const safePath = requireExistingProjectFile(
+          imagePath,
+          ownerUserId,
+          projectId,
+          legacyProjectPath,
+        )
+        imageBuffer = readFileSync(safePath)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '读取场景图片失败'
+      throw new RouteError(400, message)
     }
 
     return NextResponse.json({
