@@ -1,30 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import { validateRemoteMediaUrl } from '@/services/remote-media.service'
+import {
+  requireAuth,
+  requireSceneAccess,
+  routeErrorResponse,
+  RouteError,
+} from '@/services/security.service'
 
 export async function POST(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  try {
+    const { userId } = requireAuth(req)
+    const { sceneId, imageUrl, prompt, size } = await req.json()
+    if (typeof sceneId !== 'string' || typeof imageUrl !== 'string') {
+      throw new RouteError(400, 'sceneId and imageUrl required')
+    }
 
-  const { sceneId, imageUrl, prompt, size } = await req.json()
-  if (!sceneId || !imageUrl) return NextResponse.json({ error: 'sceneId and imageUrl required' }, { status: 400 })
+    const safeImageUrl = await validateRemoteMediaUrl(imageUrl)
+    const db = await getDatabase()
+    requireSceneAccess(db, sceneId, userId, 'write')
 
-  const userId = getUserId(apiKey)
-  const db = await getDatabase()
+    const imageId = uuid()
+    db.run('UPDATE image_assets SET is_current = 0 WHERE scene_id = ?', [sceneId])
+    db.run(
+      'INSERT INTO image_assets (id, scene_id, prompt, file_path, size, is_current) VALUES (?, ?, ?, ?, ?, 1)',
+      [
+        imageId,
+        sceneId,
+        typeof prompt === 'string' ? prompt.slice(0, 10_000) : '',
+        safeImageUrl,
+        typeof size === 'string' ? size : '1024x768',
+      ],
+    )
+    db.run("UPDATE scenes SET state = 'IMG_READY', error_message = NULL WHERE id = ?", [sceneId])
+    saveDatabase()
 
-  const check = db.exec(
-    "SELECT sc.id FROM scenes sc JOIN scripts s ON sc.script_id = s.id JOIN projects p ON s.project_id = p.id WHERE sc.id = ? AND p.user_id = ?",
-    [sceneId, userId]
-  )
-  if (!check.length || !check[0].values.length) return NextResponse.json({ error: 'Scene not found' }, { status: 404 })
-
-  const imageId = uuid()
-  db.run("UPDATE image_assets SET is_current = 0 WHERE scene_id = ?", [sceneId])
-  db.run("INSERT INTO image_assets (id, scene_id, prompt, file_path, size, is_current) VALUES (?, ?, ?, ?, ?, 1)",
-    [imageId, sceneId, prompt || '', imageUrl, size || '1024x768'])
-  db.run("UPDATE scenes SET state = 'IMG_READY', error_message = NULL WHERE id = ?", [sceneId])
-  saveDatabase()
-
-  return NextResponse.json({ id: imageId, filePath: imageUrl })
+    return NextResponse.json({ id: imageId, filePath: safeImageUrl })
+  } catch (error) {
+    return routeErrorResponse(error)
+  }
 }

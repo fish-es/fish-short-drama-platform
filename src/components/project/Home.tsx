@@ -5,6 +5,7 @@ import { useAppStore } from '@/store'
 import { projectApi } from '@/services/api.client'
 import { setApiKey } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
+import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 
 interface FeedbackItem {
   id: string
@@ -146,7 +147,14 @@ export default function Home() {
 
   const handleDownloadCover = async (project: any) => {
     if (!project.coverImage) return
-    const url = project.coverImage.startsWith('http') ? project.coverImage : `/api/file?path=${encodeURIComponent(project.coverImage)}`
+    if (!project.coverImage.startsWith('http')) {
+      await downloadProtectedFile(
+        `/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`,
+        `${project.dramaTitle || project.name}_封面.png`,
+      )
+      return
+    }
+    const url = project.coverImage
     const a = document.createElement('a')
     a.href = url
     a.download = `${project.dramaTitle || project.name}_封面.png`
@@ -521,7 +529,12 @@ export default function Home() {
               <div key={project.id} className="flex items-center gap-4 p-4 glass-card">
                 {project.coverImage ? (
                   <div className="relative group">
-                    <img src={project.coverImage.startsWith('http') ? project.coverImage : `/api/file?path=${encodeURIComponent(project.coverImage)}`} alt="" className="w-16 h-20 object-cover rounded" />
+                    <ProtectedImage
+                      source={project.coverImage}
+                      protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`}
+                      alt=""
+                      className="w-16 h-20 object-cover rounded"
+                    />
                     <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition flex flex-col items-center justify-center gap-1 rounded">
                       <button onClick={(e) => { e.stopPropagation(); handleRegenCover(project) }} className="text-xs text-white hover:text-blue-300">重新生成</button>
                       <button onClick={(e) => { e.stopPropagation(); handleDownloadCover(project) }} className="text-xs text-white hover:text-green-300">下载</button>
