@@ -44,6 +44,23 @@ function isPrivateIpv4(address: string): boolean {
   )
 }
 
+function extractMappedIpv4(address: string): string | null {
+  const normalized = address.toLowerCase().split('%')[0]
+  if (!normalized.startsWith('::ffff:')) return null
+
+  const embedded = normalized.slice('::ffff:'.length)
+  if (isIP(embedded) === 4) return embedded
+
+  // Compact form like ::ffff:7f00:1
+  const parts = embedded.split(':')
+  if (parts.length === 2 && parts.every(part => /^[0-9a-f]{1,4}$/i.test(part))) {
+    const hi = parseInt(parts[0], 16)
+    const lo = parseInt(parts[1], 16)
+    return `${(hi >> 8) & 255}.${hi & 255}.${(lo >> 8) & 255}.${lo & 255}`
+  }
+  return null
+}
+
 function isPrivateIpv6(address: string): boolean {
   const normalized = address.toLowerCase().split('%')[0]
   if (normalized === '::' || normalized === '::1') return true
@@ -51,7 +68,9 @@ function isPrivateIpv6(address: string): boolean {
   if (/^fe[89ab]/.test(normalized)) return true
   if (normalized.startsWith('ff')) return true
   if (normalized.startsWith('2001:db8:')) return true
-  if (normalized.startsWith('::ffff:')) return true
+
+  const mappedIpv4 = extractMappedIpv4(normalized)
+  if (mappedIpv4) return isPrivateIpv4(mappedIpv4)
 
   return false
 }
@@ -90,10 +109,13 @@ export function parseRemoteMediaUrl(value: string): URL {
 
 async function resolvePublicAddress(url: URL): Promise<ResolvedAddress> {
   const results = await lookup(url.hostname, { all: true, verbatim: true })
-  if (results.length === 0 || results.some(result => isPrivateAddress(result.address))) {
+  // Dual-stack hosts may return a mix of public + link-local records.
+  // Only reject when there is no usable public address.
+  const publicResults = results.filter(result => !isPrivateAddress(result.address))
+  if (publicResults.length === 0) {
     throw new Error('媒体 URL 解析到了私有或无效地址')
   }
-  return results[0]
+  return publicResults[0]
 }
 
 export async function validateRemoteMediaUrl(value: string): Promise<string> {
@@ -151,6 +173,60 @@ function requestOnce(
   })
 }
 
+function sniffMediaContentType(buffer: Buffer): string | null {
+  if (buffer.length >= 8) {
+    if (
+      buffer[0] === 0x89 &&
+      buffer[1] === 0x50 &&
+      buffer[2] === 0x4e &&
+      buffer[3] === 0x47
+    ) {
+      return 'image/png'
+    }
+    if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+      return 'image/jpeg'
+    }
+    if (
+      buffer.length >= 12 &&
+      buffer[0] === 0x52 &&
+      buffer[1] === 0x49 &&
+      buffer[2] === 0x46 &&
+      buffer[3] === 0x46 &&
+      buffer[8] === 0x57 &&
+      buffer[9] === 0x45 &&
+      buffer[10] === 0x42 &&
+      buffer[11] === 0x50
+    ) {
+      return 'image/webp'
+    }
+  }
+  if (buffer.length >= 12) {
+    const box = buffer.subarray(4, 8).toString('ascii')
+    if (box === 'ftyp') return 'video/mp4'
+  }
+  return null
+}
+
+function isAllowedContentType(
+  contentType: string,
+  allowedContentTypes: string[],
+  buffer: Buffer,
+): boolean {
+  if (allowedContentTypes.some(type => contentType.startsWith(type))) return true
+
+  // Some CDNs return empty / octet-stream for signed media URLs.
+  const sniffed = sniffMediaContentType(buffer)
+  if (!sniffed) return false
+  if (
+    contentType === '' ||
+    contentType.includes('octet-stream') ||
+    contentType.startsWith('binary/')
+  ) {
+    return allowedContentTypes.some(type => sniffed.startsWith(type.replace(/\*$/, '')))
+  }
+  return false
+}
+
 export async function fetchRemoteMedia(
   value: string,
   options: RemoteMediaOptions,
@@ -170,10 +246,15 @@ export async function fetchRemoteMedia(
     if (response.statusCode < 200 || response.statusCode >= 300) {
       throw new Error(`远程媒体请求失败: ${response.statusCode}`)
     }
-    if (!options.allowedContentTypes.some(type => response.contentType.startsWith(type))) {
+    if (!isAllowedContentType(response.contentType, options.allowedContentTypes, response.body)) {
       throw new Error('远程资源不是允许的媒体类型')
     }
-    return { buffer: response.body, contentType: response.contentType, finalUrl: url.toString() }
+    return {
+      buffer: response.body,
+      contentType:
+        response.contentType || sniffMediaContentType(response.body) || 'application/octet-stream',
+      finalUrl: url.toString(),
+    }
   }
 
   throw new Error('无法获取远程媒体')

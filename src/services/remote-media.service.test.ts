@@ -20,12 +20,16 @@ describe('remote media URL validation', () => {
     expect(isPrivateAddress(address)).toBe(true)
   })
 
-  it.each(['8.8.8.8', '1.1.1.1', '2606:4700:4700::1111'])(
-    'allows public address %s',
-    address => {
-      expect(isPrivateAddress(address)).toBe(false)
-    },
-  )
+  it.each([
+    '8.8.8.8',
+    '1.1.1.1',
+    '2606:4700:4700::1111',
+    // Public IPv4-mapped IPv6 must stay public (dual-stack DNS often returns this form).
+    '::ffff:8.8.8.8',
+    '::ffff:0808:0808',
+  ])('allows public address %s', address => {
+    expect(isPrivateAddress(address)).toBe(false)
+  })
 
   it.each([
     'file:///etc/passwd',
