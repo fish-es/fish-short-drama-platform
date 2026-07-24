@@ -1,0 +1,61 @@
+{
+  "cases": [
+    {
+      "title": "未鉴权访问项目接口",
+      "req": "GET /api/project\n（无 x-api-key）",
+      "status": 401,
+      "expect": "401 + 请先设置 API Key",
+      "body": "{\"error\":\"请先设置 API Key\"}",
+      "ok": true
+    },
+    {
+      "title": "旧 path 参数被拒绝",
+      "req": "GET /api/file?path=../../etc/passwd\n（x-api-key: <real Agnes key>）",
+      "status": 400,
+      "expect": "400 + 不支持的文件类型",
+      "body": "{\"error\":\"不支持的文件类型\"}",
+      "ok": true
+    },
+    {
+      "title": "真实 Key 加载项目列表",
+      "req": "GET /api/project\n（x-api-key: <real Agnes key>）",
+      "status": 200,
+      "expect": "200 + 项目数组",
+      "body": "[\n  {\n    \"id\": \"4c43dfb9…\",\n    \"name\": \"Agnes Formal Test\",\n    \"dramaTitle\": \"错位\",\n    \"isOwner\": true\n  },\n  {\n    \"id\": \"e2b9d827…\",\n    \"name\": \"��ʽ��ȫ�Բ�\",\n    \"dramaTitle\": null,\n    \"isOwner\": true\n  },\n  {\n    \"id\": \"0e0e35fe…\",\n    \"name\": \"1\",\n    \"dramaTitle\": \"钢铁侠大战迪迦奥特曼：跨界决战\",\n    \"isOwner\": true\n  }\n]",
+      "ok": true
+    },
+    {
+      "title": "跨用户隔离（其他 Key 看不到私有项目）",
+      "req": "GET /api/project\n（x-api-key: other-user-fake-key-xyz）",
+      "status": 200,
+      "expect": "200 + []",
+      "body": "[]",
+      "ok": true
+    },
+    {
+      "title": "跨用户写操作被拒绝",
+      "req": "PUT /api/project  id=4c43dfb9… isPublic=true\n（其他用户 Key）",
+      "status": 404,
+      "expect": "404 项目不存在",
+      "body": "{\"error\":\"项目不存在\"}",
+      "ok": true
+    },
+    {
+      "title": "Agnes 真实 Key 对话可用",
+      "req": "POST https://apihub.agnes-ai.com/v1/chat/completions\nmodel=agnes-2.0-flash",
+      "status": 200,
+      "expect": "200 + assistant content",
+      "body": "{\"assistant\": \"OK\"}",
+      "ok": true
+    },
+    {
+      "title": "真实 Key 创建/拥有项目（含 AI 大纲痕迹）",
+      "req": "POST/GET /api/project with real key; earlier script gen left dramaTitle",
+      "status": 200,
+      "expect": "项目存在且 dramaTitle 非空（说明 AI 链路曾成功落库）",
+      "body": "{\n  \"id\": \"4c43dfb9…\",\n  \"name\": \"Agnes Formal Test\",\n  \"dramaTitle\": \"错位\",\n  \"isOwner\": true\n}",
+      "ok": true
+    }
+  ],
+  "all_ok": true
+}
