@@ -27,6 +27,14 @@ describe('project storage paths', () => {
   )
 
   it('distinguishes descendants from sibling paths', () => {
+    // Use platform-native separators so this assertion is stable on both Windows and Linux CI.
+    const base = join('data', 'projects')
+    const child = join(base, 'user', 'project')
+    const sibling = join('data', 'projects-evil', 'file')
+    expect(isPathWithin(base, child)).toBe(true)
+    expect(isPathWithin(base, sibling)).toBe(false)
+
+    // Also cover Windows-style input strings (may appear in DB paths / tests).
     expect(isPathWithin('C:\\data\\projects', 'C:\\data\\projects\\user\\project')).toBe(true)
     expect(isPathWithin('C:\\data\\projects', 'C:\\data\\projects-evil\\file')).toBe(false)
   })

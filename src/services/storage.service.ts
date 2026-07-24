@@ -14,8 +14,11 @@ function requireSafeSegment(value: string, label: string): void {
 }
 
 export function isPathWithin(basePath: string, candidatePath: string): boolean {
-  const rel = relative(resolve(basePath), resolve(candidatePath))
-  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel))
+  // Normalize both sides so Windows-style paths still compare correctly on POSIX CI runners.
+  const base = resolve(basePath.replace(/\\/g, '/'))
+  const candidate = resolve(candidatePath.replace(/\\/g, '/'))
+  const rel = relative(base, candidate)
+  return rel === '' || (!rel.startsWith(`..${sep}`) && !rel.startsWith('../') && rel !== '..' && !isAbsolute(rel))
 }
 
 export function resolveWithin(basePath: string, ...segments: string[]): string {
