@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { projectApi } from '@/services/api.client'
-import { setApiKey } from '@/services/api.client'
+import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 
@@ -325,6 +324,12 @@ export default function Home() {
               </button>
               <button onClick={() => setShowKey(!showKey)} className="btn-secondary !text-xs">
                 ⚙ API Key
+              </button>
+              <button
+                onClick={async () => { await logout(); window.location.reload() }}
+                className="btn-secondary !text-xs !border-red-500/30 !text-red-400 hover:!text-red-300"
+              >
+                退出登录
               </button>
             </div>
           </div>
