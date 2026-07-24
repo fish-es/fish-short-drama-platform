@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@next/swc-win32-x64-msvc": "^16.2.11",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
