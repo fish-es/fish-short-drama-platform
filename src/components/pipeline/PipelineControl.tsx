@@ -4,6 +4,12 @@ import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
 import { sceneApi } from '@/services/api.client'
 import { generateImage, generateVideo, pollVideoStatus } from '@/services/agnes.client'
+import {
+  mergeVideosWithSubtitles,
+  downloadBlob,
+  type ProgressStep,
+  type MergeResult,
+} from '@/services/video-merger.client'
 
 export default function PipelineControl() {
   const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress,
@@ -14,7 +20,48 @@ export default function PipelineControl() {
   const timerRef = useRef<NodeJS.Timeout | null>(null)
   const startTimeRef = useRef<number>(0)
 
+  // Client-side merge state
+  const [mergeStatus, setMergeStatus] = useState<'idle' | 'merging' | 'done' | 'error'>('idle')
+  const [mergeSubtitles, setMergeSubtitles] = useState(true)
+  const [mergeProgressMsg, setMergeProgressMsg] = useState('')
+  const [showServerFallback, setShowServerFallback] = useState(false)
+
+  // Scene selection for merge
+  const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set())
+
   const allVideoReady = scenes.length > 0 && scenes.every(s => s.state === 'VIDEO_READY')
+  const videoReadyScenes = scenes.filter(s => s.state === 'VIDEO_READY')
+  const videoCount = videoReadyScenes.length
+
+  // Reset selection when scenes change
+  useEffect(() => {
+    if (videoCount >= 2) {
+      // Default: select all
+      setSelectedSceneIds(new Set(videoReadyScenes.map(s => s.id)))
+    }
+  }, [videoCount, scenes.map(s => s.id + s.state).join(',')])
+
+  const selectedCount = videoReadyScenes.filter(s => selectedSceneIds.has(s.id)).length
+
+  const toggleScene = (sceneId: string) => {
+    setSelectedSceneIds(prev => {
+      const next = new Set(prev)
+      if (next.has(sceneId)) {
+        next.delete(sceneId)
+      } else {
+        next.add(sceneId)
+      }
+      return next
+    })
+  }
+
+  const toggleAll = () => {
+    if (selectedCount === videoCount) {
+      setSelectedSceneIds(new Set())
+    } else {
+      setSelectedSceneIds(new Set(videoReadyScenes.map(s => s.id)))
+    }
+  }
 
   // Timer effect
   useEffect(() => {
@@ -62,7 +109,6 @@ export default function PipelineControl() {
         if (allDone) break
         if (useAppStore.getState().pipelineStatus !== 'running') return
 
-        // Safety: too many consecutive failures
         if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
           setPipelineStep(`连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，已暂停`)
           setPipelineStatus('paused')
@@ -78,8 +124,6 @@ export default function PipelineControl() {
         const errorScene = currentScenes.find(s => s.state === 'ERROR')
         const imgReadyScene = currentScenes.find(s => s.state === 'IMG_READY')
 
-        // Priority: DRAFT first, then ERROR (retry), then IMG_READY (video)
-        // This ensures all images are done before starting videos
         const allImagesComplete = !currentScenes.some(s => s.state === 'DRAFT' || s.state === 'GENERATING_IMG')
         const hasImageErrors = currentScenes.some(s => s.state === 'ERROR')
 
@@ -120,7 +164,6 @@ export default function PipelineControl() {
             const apiKey = localStorage.getItem('agnes_api_key') || ''
             const ctx = await sceneApi.getVideoContext(imgReadyScene.id)
             const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, apiKey)
-            // Poll for completion
             const maxPollTime = 5 * 60 * 1000
             const pollInterval = 5000
             const startTime = Date.now()
@@ -141,7 +184,6 @@ export default function PipelineControl() {
             consecutiveFailures++
           }
 
-          // After each video, retry a failed image if any
           const freshScenes = useAppStore.getState().scenes
           const failedImageScene = freshScenes.find(s => s.state === 'ERROR')
           if (failedImageScene) {
@@ -268,6 +310,90 @@ export default function PipelineControl() {
     }
   }
 
+  /** Client-side merge — only merges SELECTED scenes */
+  const handleClientMerge = async () => {
+    if (!currentProject || selectedCount < 1) return
+
+    setMergeStatus('merging')
+    setShowServerFallback(false)
+
+    const projectName = currentProject.dramaTitle || currentProject.name || 'video'
+    const episodeNumber = currentEpisodeId
+      ? (() => {
+          const ep = useAppStore.getState().episodes.find(e => e.id === currentEpisodeId)
+          return ep ? `第${ep.number}集` : ''
+        })()
+      : ''
+    const filename = `${projectName}${episodeNumber ? '_' + episodeNumber : ''}_merged.mp4`
+
+    try {
+      // Only use selected scenes
+      const selectedScenes = videoReadyScenes.filter(s => selectedSceneIds.has(s.id))
+
+      const sceneVideos = selectedScenes.map((s, i) => ({
+        url: '',
+        dialogue: s.dialogue,
+        duration: s.duration,
+        sceneId: s.id,
+        order: i,
+      }))
+
+      // Fetch video URLs for selected scenes in parallel
+      setMergeProgressMsg('获取视频地址...')
+      const urlResults = await Promise.all(
+        sceneVideos.map(sv =>
+          fetch(`/api/scene/video?sceneId=${sv.sceneId}`)
+            .then(res => res.json())
+            .then(data => ({ ...sv, url: data.filePath || '' }))
+        )
+      )
+      for (const sv of urlResults) {
+        if (!sv.url) throw new Error(`场景 ${sv.order + 1} 视频地址获取失败`)
+      }
+
+      const result: MergeResult = await mergeVideosWithSubtitles(
+        urlResults,
+        mergeSubtitles,
+        (progress: ProgressStep) => {
+          switch (progress.step) {
+            case 'download':
+              setMergeProgressMsg(`正在下载视频 ${progress.index}/${progress.total}...`)
+              break
+            case 'parse':
+              setMergeProgressMsg(`正在解析视频 ${progress.index}/${progress.total}...`)
+              break
+            case 'merge':
+              setMergeProgressMsg('正在合并视频轨道...')
+              break
+            case 'subtitle':
+              setMergeProgressMsg('正在生成字幕...')
+              break
+            case 'done':
+              setMergeProgressMsg('处理完成，开始下载...')
+              break
+          }
+        }
+      )
+
+      downloadBlob(result.blob, filename)
+      if (result.srtBlob) {
+        // Small delay to avoid browser blocking two rapid downloads
+        setTimeout(() => {
+          downloadBlob(result.srtBlob!, filename.replace(/\.mp4$/i, '.srt'))
+        }, 300)
+      }
+      setMergeStatus('done')
+      const msg = result.srtBlob
+        ? '合并下载完成！(MP4 + SRT字幕)'
+        : '合并下载完成！'
+      setMergeProgressMsg(msg)
+    } catch (e: any) {
+      setMergeStatus('error')
+      setMergeProgressMsg(`客户端合并失败: ${e.message}`)
+      setShowServerFallback(true)
+    }
+  }
+
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center gap-3 flex-wrap">
@@ -304,6 +430,107 @@ export default function PipelineControl() {
           )}
         </div>
       )}
+
+      {/* ── Client-Side Merge Panel (2+ videos, shows when at least 2 ready) ── */}
+      {videoCount >= 2 || mergeStatus !== 'idle' ? (
+        <div className="mt-4 pt-4 border-t border-white/10 space-y-3">
+          <h4 className="text-sm font-medium text-gray-300">
+            合并下载 ({selectedCount}/{videoCount} 个视频)
+          </h4>
+
+          {/* Scene selection checkboxes */}
+          <div className="space-y-1 max-h-40 overflow-y-auto">
+            <label className="flex items-center gap-2 text-xs text-gray-400 cursor-pointer pb-1 border-b border-white/5">
+              <input
+                type="checkbox"
+                checked={selectedCount === videoCount}
+                onChange={toggleAll}
+                disabled={mergeStatus === 'merging'}
+                className="w-3 h-3"
+              />
+              全选 / 取消全选
+            </label>
+            {videoReadyScenes.map((s, i) => (
+              <label key={s.id} className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-white">
+                <input
+                  type="checkbox"
+                  checked={selectedSceneIds.has(s.id)}
+                  onChange={() => toggleScene(s.id)}
+                  disabled={mergeStatus === 'merging'}
+                  className="w-3 h-3"
+                />
+                场景 {i + 1}
+                <span className="text-gray-500">{s.duration}s</span>
+                {s.dialogue.trim() && <span className="text-indigo-400/70">💬</span>}
+              </label>
+            ))}
+          </div>
+
+          {/* Subtitle toggle */}
+          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={mergeSubtitles}
+              onChange={(e) => setMergeSubtitles(e.target.checked)}
+              disabled={mergeStatus === 'merging'}
+              className="w-4 h-4"
+            />
+            包含软字幕（MP4 内嵌）
+          </label>
+
+          {/* Action buttons */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {mergeStatus !== 'merging' && (
+              <button
+                onClick={handleClientMerge}
+                disabled={selectedCount < 1}
+                className="btn-success px-4 py-2 disabled:opacity-50"
+              >
+                {mergeStatus === 'done'
+                  ? '重新合并下载'
+                  : selectedCount < videoCount
+                    ? `合并下载 (已选 ${selectedCount} 个)`
+                    : '合并下载 MP4'}
+              </button>
+            )}
+
+            {showServerFallback && (
+              <button
+                onClick={handleAssemble}
+                className="btn-secondary px-4 py-2 text-sm"
+              >
+                服务端合成（较慢）
+              </button>
+            )}
+          </div>
+
+          {/* Progress */}
+          {mergeStatus === 'merging' && (
+            <div className="space-y-1">
+              <p className="text-sm text-indigo-300 animate-pulse">{mergeProgressMsg}</p>
+              <div className="progress-bar">
+                <div className="progress-bar-fill progress-bar-indeterminate" />
+              </div>
+            </div>
+          )}
+
+          {mergeStatus === 'done' && (
+            <p className="text-sm text-green-400">{mergeProgressMsg}</p>
+          )}
+
+          {mergeStatus === 'error' && (
+            <p className="text-sm text-red-400">{mergeProgressMsg}</p>
+          )}
+
+          {/* Soft subtitle notice */}
+          {mergeSubtitles && (
+            <p className="text-xs text-amber-400/70">
+              ⚠ 软字幕为 MP4 内嵌字幕轨道，浏览器的 &lt;video&gt; 标签不支持显示。
+              请使用 <strong>VLC</strong> / <strong>PotPlayer</strong> / <strong>IINA</strong> 等播放器打开下载的视频，即可在字幕菜单中开启中文字幕。
+            </p>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }

@@ -3,7 +3,17 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
 import { sceneApi } from '@/services/api.client'
+import {
+  addSubtitleToVideo,
+  downloadBlob,
+  type SubtitleEntry,
+} from '@/services/video-merger.client'
 import { ProtectedImage, ProtectedVideo } from '@/components/common/ProtectedMedia'
+
+function assetUrl(path: string): string {
+  if (path.startsWith('http')) return path
+  return `/api/file?path=${encodeURIComponent(path)}`
+}
 
 const isOwnerProject = () => useAppStore.getState().currentProject?.isOwner !== false
 
@@ -15,6 +25,9 @@ export default function SceneList() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDesc, setEditDesc] = useState('')
   const [editDialogue, setEditDialogue] = useState('')
+  const [downloadSubtitles, setDownloadSubtitles] = useState(true)
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [downloadMsg, setDownloadMsg] = useState('')
 
   useEffect(() => {
     scenes.forEach(scene => {
@@ -62,6 +75,64 @@ export default function SceneList() {
   const handleSaveEdit = (sceneId: string) => {
     updateScene(sceneId, { description: editDesc, dialogue: editDialogue })
     setEditingId(null)
+  }
+
+  const handleDownloadScene = async (sceneId: string, videoPath: string, dialogue: string, duration: number, sceneIndex: number) => {
+    if (downloadingId) return
+    setDownloadingId(sceneId)
+
+    try {
+      const hasDialogue = dialogue.trim().length > 0
+      const projectName = useAppStore.getState().currentProject?.dramaTitle
+        || useAppStore.getState().currentProject?.name
+        || 'video'
+      const filename = `${projectName}_场景${sceneIndex + 1}.mp4`
+
+      if (!downloadSubtitles || !hasDialogue) {
+        // Direct download — no subtitle processing needed
+        setDownloadMsg('下载中...')
+        const fetchUrl = videoPath.startsWith('http')
+          ? `/api/proxy-video?url=${encodeURIComponent(videoPath)}`
+          : assetUrl(videoPath)
+
+        const res = await fetch(fetchUrl)
+        if (!res.ok) throw new Error(`下载失败 (${res.status})`)
+        const blob = await res.blob()
+        downloadBlob(blob, filename)
+      } else {
+        // Download + embed soft subtitles
+        setDownloadMsg('下载视频...')
+        const fetchUrl = videoPath.startsWith('http')
+          ? `/api/proxy-video?url=${encodeURIComponent(videoPath)}`
+          : assetUrl(videoPath)
+
+        const res = await fetch(fetchUrl)
+        if (!res.ok) throw new Error(`下载失败 (${res.status})`)
+        const buffer = await res.arrayBuffer()
+
+        setDownloadMsg('封装字幕...')
+        const subtitles: SubtitleEntry[] = [{
+          startTime: 0,
+          endTime: duration,
+          text: dialogue,
+        }]
+
+        const result = await addSubtitleToVideo(buffer, subtitles)
+        downloadBlob(result.blob, filename)
+        if (result.srtBlob) {
+          setTimeout(() => {
+            downloadBlob(result.srtBlob!, filename.replace(/\.mp4$/i, '.srt'))
+          }, 300)
+        }
+      }
+
+      setDownloadMsg('')
+    } catch (e: any) {
+      alert(`下载失败: ${e.message}`)
+      setDownloadMsg('')
+    } finally {
+      setDownloadingId(null)
+    }
   }
 
   const stateLabels: Record<string, string> = {
@@ -129,6 +200,33 @@ export default function SceneList() {
                 controls
                 className="w-full h-32 rounded"
               />
+              <div className="flex items-center gap-2 mt-1">
+                <button
+                  onClick={() => handleDownloadScene(scene.id, videos[scene.id], scene.dialogue, scene.duration, i)}
+                  disabled={downloadingId === scene.id}
+                  className="btn-primary px-2 py-0.5 text-xs disabled:opacity-50"
+                >
+                  {downloadingId === scene.id
+                    ? (downloadMsg || '处理中...')
+                    : '⬇ 下载'}
+                </button>
+                {scenes.filter(s => s.state === 'VIDEO_READY').length >= 2 && (
+                  <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={downloadSubtitles}
+                      onChange={(e) => setDownloadSubtitles(e.target.checked)}
+                      className="w-3 h-3"
+                    />
+                    字幕
+                  </label>
+                )}
+                {downloadSubtitles && scene.dialogue.trim() && (
+                  <span className="text-[10px] text-amber-400/70" title="软字幕需用 VLC / PotPlayer / IINA 等播放器查看">
+                    ⚠ 软字幕
+                  </span>
+                )}
+              </div>
             </div>
           )}
 
