@@ -190,7 +190,9 @@ export default function PipelineControl() {
             setPipelineStep(`视频完成，顺便重试失败的图片...`)
             try {
               const apiKey = localStorage.getItem('agnes_api_key') || ''
-              const imgRes = await fetch(`/api/scene/image?sceneId=${failedImageScene.id}`)
+              const imgRes = await fetch(`/api/scene/image?sceneId=${failedImageScene.id}`, {
+                headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+              })
               const imgData = await imgRes.json()
               if (!imgData.filePath) {
                 updateScene(failedImageScene.id, { state: 'GENERATING_IMG', errorMessage: null })
@@ -208,7 +210,9 @@ export default function PipelineControl() {
 
           let hasImage = false
           try {
-            const imgRes = await fetch(`/api/scene/image?sceneId=${errorScene.id}`)
+            const imgRes = await fetch(`/api/scene/image?sceneId=${errorScene.id}`, {
+              headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+            })
             const imgData = await imgRes.json()
             hasImage = !!imgData.filePath
           } catch {}
@@ -283,12 +287,16 @@ export default function PipelineControl() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error)
 
-      const fileRes = await fetch(`/api/file?path=${encodeURIComponent(data.path)}`)
+      // Download via browser
+      const fileRes = await fetch(data.downloadUrl, {
+        headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
+      })
+      if (!fileRes.ok) throw new Error('合成文件下载失败')
       const blob = await fileRes.blob()
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = data.path.split(/[/\\]/).pop() || 'video.mp4'
+      a.download = data.filename || 'video.mp4'
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)

@@ -3,22 +3,30 @@ import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
 import { generateImage } from '@/services/agnes.service'
 import { generateOutline, parseOutlineResponse } from '@/services/script.service'
-import { getUserId } from '@/services/user.service'
+import { validateRemoteMediaUrl } from '@/services/remote-media.service'
+import {
+  requireAuth,
+  requireProjectAccess,
+  routeErrorResponse,
+  RouteError,
+} from '@/services/security.service'
 
 export async function POST(req: NextRequest) {
-  const { prompt, projectId } = await req.json()
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  try {
+    const { apiKey, userId } = requireAuth(req)
+    const { prompt, projectId } = await req.json()
+    if (typeof projectId !== 'string' || typeof prompt !== 'string' || !prompt.trim()) {
+      throw new RouteError(400, '请求参数无效')
+    }
 
-  const db = await getDatabase()
+    const db = await getDatabase()
+    requireProjectAccess(db, projectId, userId, 'write')
 
-  const userId = getUserId(apiKey)
-  const projRows = db.exec("SELECT output_path, aspect_ratio FROM projects WHERE id = ? AND user_id = ?", [projectId, userId])
-  if (!projRows.length || !projRows[0].values.length) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 })
-  }
-  const projectPath = projRows[0].values[0][0] as string
-  const aspectRatio = (projRows[0].values[0][1] as string) || '16:9'
+    const projRows = db.exec('SELECT aspect_ratio FROM projects WHERE id = ?', [projectId])
+    if (!projRows.length || !projRows[0].values.length) {
+      throw new RouteError(404, 'Project not found')
+    }
+    const aspectRatio = (projRows[0].values[0][0] as string) || '16:9'
 
   // Generate outline with retry
   let parsed: ReturnType<typeof parseOutlineResponse> | null = null
@@ -63,7 +71,13 @@ export async function POST(req: NextRequest) {
   }
 
   // Create episodes
-  const episodes: any[] = []
+  const episodes: Array<{
+    id: string
+    number: number
+    title: string
+    summary: string
+    status: string
+  }> = []
   for (const ep of parsed.episodes) {
     const epId = uuid()
     db.run(
@@ -80,7 +94,9 @@ export async function POST(req: NextRequest) {
   try {
     const coverSize = aspectRatio === '9:16' ? '768x1024' : aspectRatio === '1:1' ? '1024x1024' : '1024x768'
     const coverPrompt = `${parsed.title}，短剧封面海报，电影感，精美构图，主角特写，戏剧性光影`
-    const coverUrl = await generateImage(coverPrompt, coverSize, apiKey)
+    const coverUrl = await validateRemoteMediaUrl(
+      await generateImage(coverPrompt, coverSize, apiKey),
+    )
     db.run("UPDATE projects SET cover_image = ? WHERE id = ?", [coverUrl, projectId])
     saveDatabase()
     coverImage = coverUrl
@@ -93,7 +109,9 @@ export async function POST(req: NextRequest) {
       if (!charRows.length || !charRows[0].values.length) continue
       const charId = charRows[0].values[0][0] as string
       const charPrompt = `${char.keywords}，面朝镜头，半身像，中性背景，高质量，细致面部特征`
-      const charUrl = await generateImage(charPrompt, '768x1024', apiKey)
+      const charUrl = await validateRemoteMediaUrl(
+        await generateImage(charPrompt, '768x1024', apiKey),
+      )
       db.run("UPDATE characters SET reference_image = ? WHERE id = ?", [charUrl, charId])
     } catch {}
   }
@@ -105,12 +123,17 @@ export async function POST(req: NextRequest) {
       if (!locRows.length || !locRows[0].values.length) continue
       const locId = locRows[0].values[0][0] as string
       const locPrompt = `${loc.keywords}，广角镜头，电影感，高质量，无人物`
-      const locUrl = await generateImage(locPrompt, '1024x768', apiKey)
+      const locUrl = await validateRemoteMediaUrl(
+        await generateImage(locPrompt, '1024x768', apiKey),
+      )
       db.run("UPDATE locations SET reference_image = ? WHERE id = ?", [locUrl, locId])
     } catch {}
   }
 
   saveDatabase()
 
-  return NextResponse.json({ scriptId, episodes, title: parsed.title, coverImage })
+    return NextResponse.json({ scriptId, episodes, title: parsed.title, coverImage })
+  } catch (error) {
+    return routeErrorResponse(error)
+  }
 }
