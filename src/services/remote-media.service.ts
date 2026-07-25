@@ -1,5 +1,6 @@
 import { isIP } from 'net'
 import { lookup } from 'dns/promises'
+import type { LookupAddress, LookupOptions } from 'dns'
 import http from 'http'
 import https from 'https'
 
@@ -124,6 +125,25 @@ export async function validateRemoteMediaUrl(value: string): Promise<string> {
   return url.toString()
 }
 
+type PinnedLookupCallback = (
+  error: NodeJS.ErrnoException | null,
+  address: string | LookupAddress[],
+  family?: number,
+) => void
+
+export function createPinnedLookup(resolved: ResolvedAddress) {
+  return (_hostname: string, lookupOptions: LookupOptions, callback: PinnedLookupCallback): void => {
+    // Node may request every address (`all: true`) when selecting a connection
+    // family. Keep DNS-rebinding protection by returning only the vetted
+    // address, but honor the lookup callback's array contract.
+    if (lookupOptions.all) {
+      callback(null, [{ address: resolved.address, family: resolved.family }])
+      return
+    }
+    callback(null, resolved.address, resolved.family)
+  }
+}
+
 function requestOnce(
   url: URL,
   resolved: ResolvedAddress,
@@ -137,9 +157,7 @@ function requestOnce(
       url,
       {
         headers: { Accept: options.allowedContentTypes.map(type => `${type}*`).join(', ') },
-        lookup: (_hostname, _lookupOptions, callback) => {
-          callback(null, resolved.address, resolved.family)
-        },
+        lookup: createPinnedLookup(resolved),
       },
       response => {
         const statusCode = response.statusCode || 0

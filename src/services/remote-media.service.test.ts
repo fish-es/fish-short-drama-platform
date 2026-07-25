@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  createPinnedLookup,
   isPrivateAddress,
   parseRemoteMediaUrl,
 } from './remote-media.service'
@@ -40,6 +41,31 @@ describe('remote media URL validation', () => {
     'https://example.com:3000/image.png',
   ])('rejects unsafe URL %s', value => {
     expect(() => parseRemoteMediaUrl(value)).toThrow()
+  })
+
+  it('honors Node lookup all:true callbacks without exposing unvetted addresses', () => {
+    const pinnedLookup = createPinnedLookup({ address: '8.8.8.8', family: 4 })
+    let callbackArgs: unknown[] = []
+
+    pinnedLookup('cdn.example.com', { all: true }, (...args) => {
+      callbackArgs = args
+    })
+
+    expect(callbackArgs).toEqual([
+      null,
+      [{ address: '8.8.8.8', family: 4 }],
+    ])
+  })
+
+  it('uses the standard lookup callback shape when all is not requested', () => {
+    const pinnedLookup = createPinnedLookup({ address: '8.8.8.8', family: 4 })
+    let callbackArgs: unknown[] = []
+
+    pinnedLookup('cdn.example.com', {}, (...args) => {
+      callbackArgs = args
+    })
+
+    expect(callbackArgs).toEqual([null, '8.8.8.8', 4])
   })
 
   it('accepts a normal public HTTPS URL', () => {
