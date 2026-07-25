@@ -100,19 +100,20 @@ function runMigrations(db: Database): void {
     )`)
   }
 
-  // Ensure users table has the correct columns (migration from older schema)
+  // Rebuild users table if schema doesn't match expected columns
   const userCols = db.exec("PRAGMA table_info(users)")
   if (userCols.length > 0) {
     const colNames = userCols[0].values.map((row: any) => row[1])
-    const hasName = colNames.includes('name')
-    const hasUsername = colNames.includes('username')
-    if (hasName && !hasUsername) {
-      db.run("ALTER TABLE users RENAME COLUMN name TO username")
-    } else if (hasName && hasUsername) {
-      db.run("ALTER TABLE users DROP COLUMN name")
-    }
-    if (!colNames.includes('password_hash')) {
-      db.run("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+    const expected = ['id', 'username', 'password_hash', 'created_at']
+    const needsRebuild =
+      colNames.length !== expected.length ||
+      !expected.every(c => colNames.includes(c))
+    if (needsRebuild) {
+      const hasName = colNames.includes('name')
+      db.run("ALTER TABLE users RENAME TO users_old")
+      db.run("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))")
+      db.run(`INSERT INTO users (id, username, password_hash, created_at) SELECT id, ${hasName ? 'name' : 'username'} AS username, password_hash, created_at FROM users_old`)
+      db.run("DROP TABLE users_old")
     }
   }
 
