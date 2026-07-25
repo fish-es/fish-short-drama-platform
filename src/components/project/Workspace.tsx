@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAppStore } from '@/store'
+import { logout } from '@/services/api.client'
 import ScriptChat from '@/components/script/ScriptChat'
 import EpisodeList from '@/components/episode/EpisodeList'
 import SceneList from '@/components/scene/SceneList'
@@ -23,7 +24,15 @@ export default function Workspace() {
           </button>
           <h2 className="text-lg font-medium">{currentProject.dramaTitle || currentProject.name}</h2>
         </div>
-        <span className="text-sm text-gray-400">{currentProject.aspectRatio}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-gray-400">{currentProject.aspectRatio}</span>
+          <button
+            onClick={async () => { await logout(); window.location.reload() }}
+            className="btn-secondary px-3 py-1 text-xs !border-red-500/30 !text-red-400 hover:!text-red-300"
+          >
+            退出登录
+          </button>
+        </div>
       </header>
 
       <main className="flex-1 flex overflow-hidden">

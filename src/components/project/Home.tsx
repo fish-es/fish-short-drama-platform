@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { projectApi } from '@/services/api.client'
-import { setApiKey } from '@/services/api.client'
+import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 
@@ -14,7 +13,12 @@ interface FeedbackItem {
   createdAt: string
 }
 
-export default function Home() {
+interface HomeProps {
+  loggedIn?: boolean
+  onLoginRequired?: () => void
+}
+
+export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const { projects, setProjects, setCurrentProject, setEpisodes, setGenre: setStoreGenre, setEpisodeCount: setStoreEpisodeCount } = useAppStore()
   const [newName, setNewName] = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
@@ -64,6 +68,7 @@ export default function Home() {
 
   const handleCreate = async () => {
     if (!newName.trim()) return
+    if (!loggedIn) { onLoginRequired?.(); setCreating(false); return }
     setCreating(true)
     setStoreGenre(genre)
     const epCount = episodeCount === 'custom' ? parseInt(customEpisodeCount) || 15 : parseInt(episodeCount)
@@ -87,6 +92,7 @@ export default function Home() {
   }
 
   const handleOpen = async (project: any) => {
+    if (!loggedIn) { onLoginRequired?.(); return }
     setCurrentProject(project)
     try {
       const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } })
@@ -326,6 +332,21 @@ export default function Home() {
               <button onClick={() => setShowKey(!showKey)} className="btn-secondary !text-xs">
                 ⚙ API Key
               </button>
+              {loggedIn ? (
+                <button
+                  onClick={async () => { await logout(); window.location.reload() }}
+                  className="btn-secondary !text-xs !border-red-500/30 !text-red-400 hover:!text-red-300"
+                >
+                  退出登录
+                </button>
+              ) : (
+                <button
+                  onClick={onLoginRequired}
+                  className="btn-primary !text-xs"
+                >
+                  登录 / 注册
+                </button>
+              )}
             </div>
           </div>
 
