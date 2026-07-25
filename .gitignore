@@ -39,6 +39,12 @@ yarn-error.log*
 # vercel
 .vercel
 
+# trae / ui design artifacts
+.trae/
+prototype-*.html
+trae-prompt.md
+ui-style-preview/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

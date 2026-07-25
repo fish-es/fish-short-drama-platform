@@ -70,23 +70,25 @@ export default function SceneList() {
   }
   const stateColors: Record<string, string> = {
     DRAFT: 'badge-gray', GENERATING_IMG: 'badge-yellow animate-pulse', IMG_READY: 'badge-blue',
-    GENERATING_VIDEO: 'badge-yellow animate-pulse', VIDEO_READY: 'badge-green', ERROR: 'badge-gray text-red-400'
+    GENERATING_VIDEO: 'badge-yellow animate-pulse', VIDEO_READY: 'badge-green', ERROR: 'badge-gray'
   }
 
-  if (scenes.length === 0) return <div className="p-4 text-center text-gray-500 text-sm">暂无场景</div>
+  if (scenes.length === 0) return <div className="p-4 text-center text-sm" style={{ color: 'var(--color-text-secondary)' }}>暂无场景</div>
 
   return (
     <div className="p-4 space-y-3">
       {scenes.map((scene, i) => (
         <div key={scene.id} className="glass-card p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">场景 {i + 1}</span>
+            <span className="text-sm font-medium" style={{ color: 'var(--color-text)' }}>场景 {i + 1}</span>
             <div className="flex items-center gap-2">
               <span className={`badge ${stateColors[scene.state] || 'badge-gray'}`}>
                 {stateLabels[scene.state] || scene.state}
               </span>
-              <button onClick={() => { setEditingId(editingId === scene.id ? null : scene.id); setEditDesc(scene.description); setEditDialogue(scene.dialogue) }}
-                className="text-xs text-gray-400 hover:text-white">
+              <button
+                onClick={() => { setEditingId(editingId === scene.id ? null : scene.id); setEditDesc(scene.description); setEditDialogue(scene.dialogue) }}
+                className="btn-ghost text-xs"
+                style={{ color: 'var(--color-text-secondary)' }}>
                 {editingId === scene.id ? '取消' : '编辑'}
               </button>
             </div>
@@ -104,8 +106,8 @@ export default function SceneList() {
             </div>
           ) : (
             <>
-              <p className="text-xs text-gray-400 line-clamp-2 mb-1">{scene.description}</p>
-              <p className="text-xs text-gray-300 line-clamp-1 mb-2">💬 {scene.dialogue}</p>
+              <p className="text-xs line-clamp-2 mb-1" style={{ color: 'var(--color-text-secondary)' }}>{scene.description}</p>
+              <p className="text-xs line-clamp-1 mb-2" style={{ color: 'var(--color-text-tertiary)' }}>💬 {scene.dialogue}</p>
             </>
           )}
 
@@ -115,7 +117,7 @@ export default function SceneList() {
                 source={images[scene.id]}
                 protectedUrl={`/api/file?kind=scene-image&id=${encodeURIComponent(scene.id)}`}
                 alt={`Scene ${i + 1}`}
-                className="w-full h-40 object-cover rounded hover:opacity-90 transition"
+                className="w-full h-40 object-cover rounded transition"
                 onClick={() => setPreviewImage({ source: images[scene.id], sceneId: scene.id })}
               />
             </div>
@@ -140,7 +142,7 @@ export default function SceneList() {
             {isOwnerProject() && (scene.state === 'IMG_READY' || scene.state === 'VIDEO_READY') && (
               <>
                 <button onClick={() => handleGenerateImage(scene.id)}
-                  className="btn-primary px-3 py-1 text-xs">重新生成图片</button>
+                  className="btn-outline px-3 py-1 text-xs">重新生成图片</button>
                 <button onClick={() => handleGenerateVideo(scene.id)}
                   className="btn-primary px-3 py-1 text-xs">
                   {scene.state === 'VIDEO_READY' ? '重新生成视频' : '生成视频'}
@@ -151,16 +153,18 @@ export default function SceneList() {
               <button onClick={() => handleGenerateVideo(scene.id)}
                 className="btn-primary px-3 py-1 text-xs">重试视频</button>
             )}
-            <span className="text-xs text-gray-500">{scene.duration}s</span>
+            <span className="text-xs" style={{ color: 'var(--color-text-secondary)' }}>{scene.duration}s</span>
           </div>
 
-          {scene.errorMessage && <p className="mt-1 text-xs text-red-400">{scene.errorMessage}</p>}
+          {scene.errorMessage && <p className="mt-1 text-xs" style={{ color: 'var(--color-error)' }}>{scene.errorMessage}</p>}
         </div>
       ))}
 
       {previewImage && (
-        <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 cursor-pointer"
-          onClick={() => setPreviewImage(null)}>
+        <div
+          className="modal-overlay"
+          onClick={() => setPreviewImage(null)}
+          style={{ cursor: 'pointer' }}>
           <ProtectedImage
             source={previewImage.source}
             protectedUrl={`/api/file?kind=scene-image&id=${encodeURIComponent(previewImage.sceneId)}`}

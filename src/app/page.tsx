@@ -17,8 +17,18 @@ export default function Page() {
 
   if (needsSetup === null) {
     return (
-      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
-        <p className="text-gray-400">加载中...</p>
+      <div
+        className="min-h-screen flex flex-col items-center justify-center gap-4"
+        style={{ background: 'var(--color-bg)' }}
+      >
+        <div
+          className="w-8 h-8 rounded-full animate-spin"
+          style={{
+            border: '2px solid var(--color-border)',
+            borderTopColor: 'var(--color-accent)',
+          }}
+        />
+        <p style={{ color: 'var(--color-text-secondary)' }}>加载中...</p>
       </div>
     )
   }

@@ -269,18 +269,18 @@ export default function PipelineControl() {
   }
 
   return (
-    <div className="p-4 space-y-3">
+    <div className="p-4 space-y-3" style={{ background: 'var(--color-surface)' }}>
       <div className="flex items-center gap-3 flex-wrap">
         {currentProject?.isOwner !== false && pipelineStatus !== 'running' && (
           <button onClick={() => { resetPipeline(); runAutoPipeline() }}
             disabled={scenes.length === 0}
-            className="btn-success px-4 py-2 disabled:opacity-50">
+            className="btn-primary px-4 py-2 disabled:opacity-50">
             一键生成
           </button>
         )}
         {pipelineStatus === 'running' && (
           <button onClick={handleStop}
-            className="btn-danger px-4 py-2">
+            className="btn-outline px-4 py-2">
             停止
           </button>
         )}
@@ -288,16 +288,16 @@ export default function PipelineControl() {
 
       {(pipelineStatus === 'running' || pipelineStatus === 'paused' || pipelineStatus === 'completed' || pipelineStatus === 'error') && (
         <div className="space-y-2">
-          <p className="text-sm text-gray-300">{pipelineStep}</p>
+          <p className="text-sm" style={{ color: 'var(--color-text-secondary)' }}>{pipelineStep}</p>
           <div className="progress-bar">
             <div className="progress-bar-fill" style={{ width: `${pipelineProgress}%` }} />
           </div>
-          <div className="flex items-center justify-between text-xs text-gray-500">
+          <div className="flex items-center justify-between text-xs" style={{ color: 'var(--color-text-secondary)' }}>
             <span>{pipelineProgress}%</span>
             <span>⏱ {formatElapsed(elapsed)}</span>
           </div>
           {(stats.images > 0 || stats.videos > 0) && (
-            <div className="text-xs text-gray-500 space-x-3">
+            <div className="text-xs space-x-3" style={{ color: 'var(--color-text-secondary)' }}>
               {stats.images > 0 && <span>图片 {stats.images} 张 (均 {Math.round(stats.imgTime / stats.images / 1000)}秒/张)</span>}
               {stats.videos > 0 && <span>视频 {stats.videos} 个 (均 {Math.round(stats.vidTime / stats.videos / 1000)}秒/个)</span>}
             </div>
