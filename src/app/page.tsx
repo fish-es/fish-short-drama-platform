@@ -42,7 +42,7 @@ export default function Page() {
       />
       {showLogin && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center">
-          <div className="relative">
+          <div className="relative w-full max-w-lg mx-4">
             <button
               onClick={() => setShowLogin(false)}
               className="absolute -top-3 -right-3 w-8 h-8 bg-gray-700 rounded-full text-white hover:bg-gray-600 z-10 flex items-center justify-center text-lg"

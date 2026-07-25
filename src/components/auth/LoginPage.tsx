@@ -131,8 +131,8 @@ export default function LoginPage({ onComplete }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center px-4">
-      <div className="bg-gray-800 rounded-xl p-6 w-full max-w-md border border-gray-700 shadow-xl">
+    <div className="text-white flex items-center justify-center">
+      <div className="bg-gray-800 rounded-xl p-6 w-full border border-gray-700 shadow-xl">
 
         {/* Header */}
         <h1 className="text-2xl font-bold text-center mb-1">短剧开发平台</h1>
