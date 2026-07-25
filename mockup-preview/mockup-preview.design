@@ -1,0 +1,93 @@
+{
+  "data": [
+    {
+      "id": "page-index",
+      "title": "首页",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1753488000000,
+      "canvasData": {
+        "x": 0,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/index.html",
+        "interactions": [
+          {
+            "domId": "open-project-1",
+            "targetPageId": "page-workspace",
+            "transitionLabel": "打开项目"
+          },
+          {
+            "domId": "open-project-2",
+            "targetPageId": "page-workspace",
+            "transitionLabel": "打开项目"
+          },
+          {
+            "domId": "open-project-3",
+            "targetPageId": "page-workspace",
+            "transitionLabel": "打开项目"
+          },
+          {
+            "domId": "nav-settings",
+            "targetPageId": "page-settings",
+            "transitionLabel": "API 设置"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-workspace",
+      "title": "工作区",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1753488000000,
+      "canvasData": {
+        "x": 620,
+        "y": 0,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/workspace.html",
+        "interactions": [
+          {
+            "domId": "btn-back",
+            "targetPageId": "page-index",
+            "hideEdge": true,
+            "transitionLabel": "返回"
+          }
+        ]
+      }
+    },
+    {
+      "id": "page-settings",
+      "title": "API Key 设置",
+      "type": "page",
+      "version": 1,
+      "createdAt": 1753488000000,
+      "canvasData": {
+        "x": 620,
+        "y": 377,
+        "group": 0
+      },
+      "devMetadata": {
+        "htmlSrc": "pages/settings.html",
+        "interactions": [
+          {
+            "domId": "nav-back",
+            "targetPageId": "page-index",
+            "hideEdge": true,
+            "transitionLabel": "返回"
+          }
+        ]
+      }
+    }
+  ],
+  "config": {
+    "autoLayout": true,
+    "deviceType": "desktop",
+    "projectName": "短剧平台Mockup预览",
+    "designLibrary": null
+  }
+}
