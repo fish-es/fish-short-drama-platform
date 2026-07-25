@@ -104,8 +104,12 @@ function runMigrations(db: Database): void {
   const userCols = db.exec("PRAGMA table_info(users)")
   if (userCols.length > 0) {
     const colNames = userCols[0].values.map((row: any) => row[1])
-    if (!colNames.includes('username')) {
-      db.run("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+    const hasName = colNames.includes('name')
+    const hasUsername = colNames.includes('username')
+    if (hasName && !hasUsername) {
+      db.run("ALTER TABLE users RENAME COLUMN name TO username")
+    } else if (hasName && hasUsername) {
+      db.run("ALTER TABLE users DROP COLUMN name")
     }
     if (!colNames.includes('password_hash')) {
       db.run("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
