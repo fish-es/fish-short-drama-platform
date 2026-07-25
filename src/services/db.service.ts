@@ -100,24 +100,22 @@ function runMigrations(db: Database): void {
     )`)
   }
 
-  // Rebuild auth tables if schema doesn't match expected columns
-  function ensureSchema(tableName: string, createSql: string, expectedCols: string[], colMap: Record<string, string> = {}): void {
-    const info = db.exec(`PRAGMA table_info(${tableName})`)
-    if (!info.length) return
-    const existing = info[0].values.map((r: any) => r[1])
-    if (existing.length === expectedCols.length && expectedCols.every(c => existing.includes(c))) return
-    if (tableName === 'users') {
-      db.run(`ALTER TABLE ${tableName} RENAME TO ${tableName}_old`)
-      db.run(createSql)
-      const cols = expectedCols.map(c => colMap[c] ? `${colMap[c]} AS ${c}` : c).join(', ')
-      db.run(`INSERT INTO ${tableName} (${expectedCols.join(', ')}) SELECT ${cols} FROM ${tableName}_old`)
-      db.run(`DROP TABLE ${tableName}_old`)
-    } else {
-      db.run(`DROP TABLE ${tableName}`)
-      db.run(createSql)
+  // Clean up any old tables from previous failed migrations
+  db.run("DROP TABLE IF EXISTS users_old")
+  db.run("DROP TABLE IF EXISTS sessions_old")
+  db.run("DROP TABLE IF EXISTS password_resets_old")
+
+  // Drop and recreate auth tables if schema doesn't match expected columns
+  function ensureSchema(name: string, sql: string, expected: string[]): void {
+    const info = db.exec(`PRAGMA table_info(${name})`)
+    if (info.length) {
+      const existing = info[0].values.map((r: any) => r[1])
+      if (existing.length === expected.length && expected.every(c => existing.includes(c))) return
     }
+    db.run(`DROP TABLE IF EXISTS ${name}`)
+    db.run(sql)
   }
-  ensureSchema('users', "CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))", ['id', 'username', 'password_hash', 'created_at'], { 'username': 'name' })
+  ensureSchema('users', "CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))", ['id', 'username', 'password_hash', 'created_at'])
   ensureSchema('sessions', "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL)", ['id', 'user_id', 'token', 'created_at', 'expires_at'])
   ensureSchema('password_resets', "CREATE TABLE password_resets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)", ['id', 'user_id', 'token', 'created_at', 'expires_at', 'used'])
 
