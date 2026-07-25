@@ -12,7 +12,7 @@ import {
 } from '@/services/video-merger.client'
 
 export default function PipelineControl() {
-  const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress,
+  const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress, videoUrls,
     updateScene, setPipelineStatus, setPipelineStep, setPipelineProgress, resetPipeline } = useAppStore()
   const [subtitles, setSubtitles] = useState(true)
   const [elapsed, setElapsed] = useState(0)
@@ -292,32 +292,23 @@ export default function PipelineControl() {
       // Only use selected scenes
       const selectedScenes = videoReadyScenes.filter(s => selectedSceneIds.has(s.id))
 
-      const sceneVideos = selectedScenes.map((s, i) => ({
-        url: '',
-        dialogue: s.dialogue,
-        duration: s.duration,
-        sceneId: s.id,
-        order: i,
-      }))
+      const sceneVideos = selectedScenes.map((s, i) => {
+        const url = videoUrls[s.id] || ''
+        return {
+          url,
+          dialogue: s.dialogue,
+          duration: s.duration,
+          sceneId: s.id,
+          order: i,
+        }
+      })
 
-      // Fetch video URLs for selected scenes in parallel
-      setMergeProgressMsg('获取视频地址...')
-      const apiKey = localStorage.getItem('agnes_api_key') || ''
-      const urlResults = await Promise.all(
-        sceneVideos.map(sv =>
-          fetch(`/api/scene/video?sceneId=${sv.sceneId}`, {
-            headers: { 'x-api-key': apiKey },
-          })
-            .then(res => res.json())
-            .then(data => ({ ...sv, url: data.filePath || '' }))
-        )
-      )
-      for (const sv of urlResults) {
-        if (!sv.url) throw new Error(`场景 ${sv.order + 1} 视频地址获取失败`)
+      for (const sv of sceneVideos) {
+        if (!sv.url) throw new Error(`场景 ${sv.order + 1} 视频地址未就绪`)
       }
 
       const result: MergeResult = await mergeVideosWithSubtitles(
-        urlResults,
+        sceneVideos,
         mergeSubtitles,
         (progress: ProgressStep) => {
           switch (progress.step) {
