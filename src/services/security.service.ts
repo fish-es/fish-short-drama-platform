@@ -32,9 +32,23 @@ export function requireAuth(req: NextRequest): RequestAuth {
   return { apiKey, userId: getUserId(apiKey) }
 }
 
+function isClientFacingErrorMessage(message: string): boolean {
+  return (
+    /媒体|文件|路径|鉴权|API Key|不存在|无效|不允许|不支持|超时|失败|场景|项目|剧本|剧集|资产/.test(
+      message,
+    ) || /Agnes|Video API|Image API|remote media|outside the authorized/i.test(message)
+  )
+}
+
 export function routeErrorResponse(error: unknown): NextResponse {
   if (error instanceof RouteError) {
     return NextResponse.json({ error: error.message }, { status: error.status })
+  }
+
+  // Surface operational media/auth errors instead of masking them as a generic 500.
+  if (error instanceof Error && error.message && isClientFacingErrorMessage(error.message)) {
+    console.error('Route operational error', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
   console.error('Unhandled route error', error)

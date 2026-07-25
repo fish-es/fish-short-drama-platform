@@ -24,8 +24,8 @@ jobs:
               git clone ${{ github.server_url }}/${{ github.repository }}.git ~/fish-short-drama-platform-preview
             fi
             cd ~/fish-short-drama-platform-preview
-            git fetch origin pull/${{ github.event.pull_request.number }}/head:pr-${{ github.event.pull_request.number }}
-            git checkout -f pr-${{ github.event.pull_request.number }}
+            git fetch origin pull/${{ github.event.pull_request.number }}/head
+            git checkout -B pr-${{ github.event.pull_request.number }} FETCH_HEAD
             echo '{"pr":${{ github.event.pull_request.number }},"author":"${{ github.event.pull_request.user.login }}","title":"${{ github.event.pull_request.title }}","time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > public/deploy-info.json
             git log --pretty=format:'{"hash":"%h","author":"%an","message":"%s","time":"%aI"}' -20 | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/commits.json
             git shortlog -sn --no-merges | head -20 | awk '{print "{\"commits\":" $1 ",\"name\":\"" substr($0, index($0,$2)) "\"}"}' | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/contributors.json

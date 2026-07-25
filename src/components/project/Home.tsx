@@ -2,14 +2,18 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { projectApi } from '@/services/api.client'
-import { setApiKey } from '@/services/api.client'
+import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 
 interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string }
 
-export default function Home() {
+interface HomeProps {
+  loggedIn?: boolean
+  onLoginRequired?: () => void
+}
+
+export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const { projects, setProjects, setCurrentProject, setEpisodes, setGenre: setStoreGenre, setEpisodeCount: setStoreEpisodeCount } = useAppStore()
   const [newName, setNewName] = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
@@ -51,6 +55,7 @@ export default function Home() {
   }, [apiKey])
 
   const handleSaveKey = () => { setApiKey(apiKey); setShowKeyModal(false); projectApi.list().then(setProjects).catch(() => {}) }
+  const [checkingKey, setCheckingKey] = useState(false)
   const handleCheckKey = async () => {
     if (!apiKey) { alert('请先填写 API Key'); return }
     try {

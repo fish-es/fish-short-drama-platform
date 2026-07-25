@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useAppStore } from '@/store'
+import { logout } from '@/services/api.client'
 import ScriptChat from '@/components/script/ScriptChat'
 import EpisodeList from '@/components/episode/EpisodeList'
 import SceneList from '@/components/scene/SceneList'
@@ -31,6 +32,8 @@ export default function Workspace() {
           <button className={leftTab === 'assets' ? 'active' : ''} onClick={() => setLeftTab('assets')}><span className="icon">■</span><span>资产库</span></button>
         </div>
         <div className="sidebar-bottom">
+          <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', padding: '0 12px' }}>{currentProject.aspectRatio}</span>
+          <button onClick={async () => { await logout(); window.location.reload() }}><span className="icon">↪</span><span>退出</span></button>
           <button onClick={clearProject}><span className="icon">←</span><span>返回首页</span></button>
         </div>
       </nav>
