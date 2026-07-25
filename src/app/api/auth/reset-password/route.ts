@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
     if (!newPassword || typeof newPassword !== 'string') {
       throw new RouteError(400, '请输入新密码')
     }
-    if (newPassword.length < 12) {
-      throw new RouteError(400, '新密码长度不能少于12位')
+    if (newPassword.length < 6) {
+      throw new RouteError(400, '新密码长度不能少于6位')
     }
 
     const db = await getDatabase()

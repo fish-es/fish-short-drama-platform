@@ -57,7 +57,7 @@ export default function LoginPage({ onComplete }: Props) {
   const handleRegister = async () => {
     clearErrors()
     if (!username.trim()) { setError('请填写用户名'); return }
-    if (password.length < 12) { setError('密码长度不能少于12位'); return }
+    if (password.length < 6) { setError('密码长度不能少于6位'); return }
     if (password !== confirmPassword) { setError('两次输入的密码不一致'); return }
     setLoading(true)
     try {
@@ -101,7 +101,7 @@ export default function LoginPage({ onComplete }: Props) {
   const handleReset = async () => {
     clearErrors()
     if (!resetToken.trim()) { setError('请输入重置令牌'); return }
-    if (newPassword.length < 12) { setError('新密码长度不能少于12位'); return }
+    if (newPassword.length < 6) { setError('新密码长度不能少于6位'); return }
     if (newPassword !== confirmNewPassword) { setError('两次输入的密码不一致'); return }
     setLoading(true)
     try {
@@ -122,10 +122,10 @@ export default function LoginPage({ onComplete }: Props) {
 
   // Password strength indicator (used in register and reset forms)
   const PasswordWarning = ({ value }: { value: string }) => {
-    if (!value || value.length >= 12) return null
+    if (!value || value.length >= 6) return null
     return (
       <p className="text-red-500 text-xs mt-1">
-        密码长度不能少于12位（当前 {value.length} 位）
+        密码长度不能少于6位（当前 {value.length} 位）
       </p>
     )
   }
@@ -228,7 +228,7 @@ export default function LoginPage({ onComplete }: Props) {
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="至少12位"
+                placeholder="至少6位"
                 autoComplete="new-password"
                 className={inputCls}
               />
@@ -316,7 +316,7 @@ export default function LoginPage({ onComplete }: Props) {
                 type="password"
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="至少12位"
+                placeholder="至少6位"
                 autoComplete="new-password"
                 className={inputCls}
               />

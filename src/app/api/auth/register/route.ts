@@ -14,8 +14,8 @@ export async function POST(req: NextRequest) {
     if (!password || typeof password !== 'string') {
       throw new RouteError(400, '密码不能为空')
     }
-    if (password.length < 12) {
-      throw new RouteError(400, '密码长度不能少于12位')
+    if (password.length < 6) {
+      throw new RouteError(400, '密码长度不能少于6位')
     }
 
     const cleanUsername = username.trim().toLowerCase()
