@@ -100,22 +100,26 @@ function runMigrations(db: Database): void {
     )`)
   }
 
-  // Rebuild users table if schema doesn't match expected columns
-  const userCols = db.exec("PRAGMA table_info(users)")
-  if (userCols.length > 0) {
-    const colNames = userCols[0].values.map((row: any) => row[1])
-    const expected = ['id', 'username', 'password_hash', 'created_at']
-    const needsRebuild =
-      colNames.length !== expected.length ||
-      !expected.every(c => colNames.includes(c))
-    if (needsRebuild) {
-      const hasName = colNames.includes('name')
-      db.run("ALTER TABLE users RENAME TO users_old")
-      db.run("CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))")
-      db.run(`INSERT INTO users (id, username, password_hash, created_at) SELECT id, ${hasName ? 'name' : 'username'} AS username, password_hash, created_at FROM users_old`)
-      db.run("DROP TABLE users_old")
+  // Rebuild auth tables if schema doesn't match expected columns
+  function ensureSchema(tableName: string, createSql: string, expectedCols: string[], colMap: Record<string, string> = {}): void {
+    const info = db.exec(`PRAGMA table_info(${tableName})`)
+    if (!info.length) return
+    const existing = info[0].values.map((r: any) => r[1])
+    if (existing.length === expectedCols.length && expectedCols.every(c => existing.includes(c))) return
+    if (tableName === 'users') {
+      db.run(`ALTER TABLE ${tableName} RENAME TO ${tableName}_old`)
+      db.run(createSql)
+      const cols = expectedCols.map(c => colMap[c] ? `${colMap[c]} AS ${c}` : c).join(', ')
+      db.run(`INSERT INTO ${tableName} (${expectedCols.join(', ')}) SELECT ${cols} FROM ${tableName}_old`)
+      db.run(`DROP TABLE ${tableName}_old`)
+    } else {
+      db.run(`DROP TABLE ${tableName}`)
+      db.run(createSql)
     }
   }
+  ensureSchema('users', "CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))", ['id', 'username', 'password_hash', 'created_at'], { 'username': 'name' })
+  ensureSchema('sessions', "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL)", ['id', 'user_id', 'token', 'created_at', 'expires_at'])
+  ensureSchema('password_resets', "CREATE TABLE password_resets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)", ['id', 'user_id', 'token', 'created_at', 'expires_at', 'used'])
 
   const resetsTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='password_resets'")
   if (!resetsTable.length || !resetsTable[0].values.length) {
