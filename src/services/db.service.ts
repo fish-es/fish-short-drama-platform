@@ -100,6 +100,18 @@ function runMigrations(db: Database): void {
     )`)
   }
 
+  // Ensure users table has the correct columns (migration from older schema)
+  const userCols = db.exec("PRAGMA table_info(users)")
+  if (userCols.length > 0) {
+    const colNames = userCols[0].values.map((row: any) => row[1])
+    if (!colNames.includes('username')) {
+      db.run("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+    }
+    if (!colNames.includes('password_hash')) {
+      db.run("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+    }
+  }
+
   const resetsTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='password_resets'")
   if (!resetsTable.length || !resetsTable[0].values.length) {
     db.run(`CREATE TABLE password_resets (
