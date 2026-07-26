@@ -10,7 +10,7 @@
 - **样式**: Tailwind CSS
 - **数据库**: sql.js (SQLite WASM)
 - **AI 接口**: Agnes AI (文本/图片/视频生成)
-- **视频合成**: FFmpeg
+- **视频合成**: 客户端（mp4box.js + mp4-muxer）
 - **部署**: Docker + GitHub Actions CI/CD
 
 ## 功能
@@ -20,7 +20,7 @@
 - AI 图片生成（场景画面，支持 9:16 / 16:9 / 1:1）
 - AI 视频生成（中文对白，自动计算时长）
 - 自动流水线（图片→视频，失败自动重试）
-- FFmpeg 合成成片 + 字幕
+- 客户端视频合并 + 软字幕（tx3g 封装，VLC/PotPlayer 可显示）
 - 多用户隔离（基于 API Key）
 - 资产库管理（角色/场景参考图）
 
@@ -134,19 +134,22 @@ src/
 │   │   ├── episode/  # 分集生成
 │   │   ├── scene/    # 场景图片生成
 │   │   ├── video/    # 视频生成
-│   │   ├── ffmpeg/   # 视频合成
+│   │   ├── proxy-video/ # 视频代理下载
 │   │   ├── asset/    # 资产库
 │   │   ├── feedback/ # 问题反馈
 │   │   └── changelog/# 更新日志
 │   └── page.tsx      # 入口页面
 ├── components/       # React 组件
 ├── services/         # 服务层
-│   ├── agnes.service.ts   # AI API 调用
-│   ├── db.service.ts      # 数据库
-│   ├── script.service.ts  # 剧本逻辑
-│   ├── api.client.ts      # 前端 API 客户端
-│   ├── retry.ts           # 重试机制
-│   └── user.service.ts    # 用户标识
+│   ├── agnes.service.ts        # AI API 调用
+│   ├── db.service.ts           # 数据库
+│   ├── script.service.ts       # 剧本逻辑
+│   ├── api.client.ts           # 前端 API 客户端
+│   ├── video-merger.client.ts  # 客户端视频合并（mp4box.js + mp4-muxer）
+│   ├── remote-media.service.ts # 远程媒体资源管理
+│   ├── security.service.ts     # 鉴权与安全
+│   ├── storage.service.ts      # 文件存储
+│   └── user.service.ts         # 用户标识
 └── store/            # Zustand 状态管理
 ```
 
