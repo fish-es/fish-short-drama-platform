@@ -318,37 +318,49 @@ export async function mergeVideosWithSubtitles(
   }
   const muxer = new Muxer(muxerCfg)
 
-  let videoTimeUs = 0, audioTimeUs = 0
+  // Unified timeline: video and audio for each source start from the same base,
+  // and the timeline advances by the max of both tracks — prevents DTS regression
+  // when audio/video durations don't align (common with AAC frame boundaries).
+  let globalTimeUs = 0
 
   for (let i = 0; i < parsed.length; i++) {
     const { videoTrack, audioTrack } = parsed[i]
 
+    let videoEndUs = globalTimeUs
+    let audioEndUs = globalTimeUs
+
     if (videoTrack) {
       const ts = videoTrack.timescale || 90000
       for (const s of videoTrack.samples) {
-        const ptsUs = videoTimeUs + Math.round((s.cts / ts) * 1_000_000)
-        const dUs = videoTimeUs + Math.round((s.dts / ts) * 1_000_000)
+        const rawPtsUs = Math.round((s.cts / ts) * 1_000_000)
+        const rawDtsUs = Math.round((s.dts / ts) * 1_000_000)
+        const finalPtsUs = globalTimeUs + rawPtsUs
+        const finalDtsUs = globalTimeUs + rawDtsUs
         const durUs = Math.round((s.duration / ts) * 1_000_000)
-        muxer.addVideoChunkRaw(s.data, s.is_sync ? 'key' : 'delta', ptsUs,
-          Math.max(durUs, 1), { decoderConfig: videoDecoderConfig }, ptsUs - dUs)
-      }
-      if (videoTrack.samples.length > 0) {
-        const last = videoTrack.samples[videoTrack.samples.length - 1]
-        videoTimeUs = Math.round(((last.cts + last.duration) / ts) * 1_000_000)
+
+        muxer.addVideoChunkRaw(
+          s.data, s.is_sync ? 'key' : 'delta',
+          finalPtsUs, Math.max(durUs, 1),
+          { decoderConfig: videoDecoderConfig },
+          finalPtsUs - finalDtsUs, // compositionTimeOffset = PTS - DTS
+        )
+        videoEndUs = Math.max(videoEndUs, finalPtsUs + Math.max(durUs, 1))
       }
     }
 
     if (audioTrack) {
       const ts = audioTrack.timescale || 44100
-      // Only pass meta if we have valid config; let mp4-muxer auto-gen otherwise
       const meta: any = audioDecoderConfig ? { decoderConfig: audioDecoderConfig } : undefined
       for (const s of audioTrack.samples) {
-        const dtsUs = audioTimeUs + Math.round((s.dts / ts) * 1_000_000)
+        const dtsUs = globalTimeUs + Math.round((s.dts / ts) * 1_000_000)
         const durUs = Math.round((s.duration / ts) * 1_000_000)
         muxer.addAudioChunkRaw(s.data, 'key', dtsUs, Math.max(durUs, 1), meta)
+        audioEndUs = Math.max(audioEndUs, dtsUs + Math.max(durUs, 1))
       }
-      audioTimeUs += Math.round((audioTrack.duration / ts) * 1_000_000)
     }
+
+    // Advance unified timeline by the max of both tracks
+    globalTimeUs = Math.max(videoEndUs, audioEndUs)
   }
 
   muxer.finalize()
