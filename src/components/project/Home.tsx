@@ -5,6 +5,7 @@ import { useAppStore } from '@/store'
 import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
+import { getDeployEnv } from '@/services/deploy-env'
 
 interface FeedbackItem {
   id: string
@@ -316,10 +317,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
           <div className="flex items-center justify-between mb-8">
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-bold bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">短剧开发平台</h1>
-              <span className={`badge ${
-                deployInfo?.pr ? 'badge-yellow' : deployInfo?.branch === 'main' ? 'badge-green' : deployInfo?.branch === 'dev' ? 'badge-blue' : 'badge-gray'
-              }`}>
-                {deployInfo?.pr ? '测试版' : deployInfo?.branch === 'main' ? '正式版' : deployInfo?.branch === 'dev' ? '实验版' : '本地环境'}
+              <span className={`badge shrink-0 whitespace-nowrap ${getDeployEnv(deployInfo).badgeClass}`}>
+                {getDeployEnv(deployInfo).label}
               </span>
             </div>
             <div className="flex gap-2">
