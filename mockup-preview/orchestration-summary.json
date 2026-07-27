@@ -1,0 +1,201 @@
+{
+  "project": {
+    "name": "短剧平台Mockup预览",
+    "path": "d:\\Project-fish-short-drama-platform\\fish-short-drama-platform\\mockup-preview",
+    "operation": "create",
+    "deviceType": "desktop",
+    "language": "zh-CN",
+    "dashboardMode": false,
+    "replicationMode": null,
+    "sourceUrl": null,
+    "visualSpecExcerpt": null,
+    "styleDefinitionBrief": "暖调人文导演手记风格：暖白/米色基底 + 朱红/锈色强调 + 衬线标题 + 纯色扁平设计，杜绝AI蓝紫渐变玻璃拟态",
+    "designRead": "AI短剧创作平台 / 编剧导演制作人 / 暖调人文导演手记 / 中低密度 / 杜绝蓝紫渐变玻璃拟态霓虹光晕",
+    "designDials": {
+      "layoutVariance": 2,
+      "motionIntensity": 1,
+      "visualDensity": 3
+    },
+    "styleContinuityAnchors": {
+      "colorSystem": {
+        "primaryColorRole": "朱红/锈色系，单一品牌色，无 secondary/accent 额外色系",
+        "brandHuePolicy": "仅使用朱红(--dnb-primary-500)作为品牌强调色，身份/类别区分使用中性色阶或朱红淡色",
+        "stateColors": "墨绿(success)、琥珀金(warning)、朱红(error)、灰蓝(info)"
+      },
+      "shapeSystem": "圆角 2px/8px/12px，卡片/按钮/输入框最大 12px",
+      "typographySystem": {
+        "title": "Noto Serif SC, Source Han Serif SC, STSong, Georgia, serif (仅用于页面标题)",
+        "body": "PingFang SC, Microsoft YaHei, -apple-system, sans-serif",
+        "mono": "SF Mono, JetBrains Mono, Cascadia Code, Consolas, monospace",
+        "scale": "11px / 13px / 15px / 20px"
+      },
+      "spacingSystem": null,
+      "componentLanguage": "纯色按钮(无渐变) + 细边框卡片(无玻璃拟态) + 底部边框 Tab 指示器 + 纯色进度条",
+      "surfaceAndDepth": {
+        "staticSurfaces": "边框/表面分层优先，不使用阴影",
+        "floatingLayers": "仅 modal/dropdown/tooltip 使用 alpha <= 0.05 阴影",
+        "noGlow": "禁止发光阴影和彩色阴影"
+      },
+      "imageryAndIconography": null,
+      "interactionTone": "hover 仅颜色/边框变化，无 translateY，无缩放，无发光"
+    },
+    "specsConstraints": null,
+    "sharedProjectShellContract": {
+      "navigationShell": null,
+      "primaryColorSystem": "唯一品牌色 var(--dnb-primary-500)，无 secondary/accent",
+      "typographySystem": "Noto Serif SC 标题 + PingFang SC 正文，字号 11/13/15/20",
+      "radiusScale": "2px / 8px / 12px",
+      "surfaceDepthModel": "静态表面边框/表面分层，浮层 alpha <= 0.05 阴影",
+      "ctaStyle": "纯色朱红填充按钮，hover 加深，无发光无位移",
+      "alignmentRules": null
+    },
+    "generationTree": {
+      "root": {
+        "nodeId": "gen-project-shell",
+        "kind": "project-shell",
+        "pageIds": ["page-index", "page-workspace", "page-settings"],
+        "output": null,
+        "sharedRegions": ["brandCSS", "typography", "colorSystem", "componentLanguage"],
+        "privateRegions": [],
+        "mutableSlots": [],
+        "status": "planned",
+        "children": [
+          {
+            "nodeId": "gen-page-index",
+            "kind": "page-leaf",
+            "pageIds": ["page-index"],
+            "output": "pages/index.html",
+            "sharedRegions": [],
+            "privateRegions": ["sidebar", "createProjectForm", "projectList"],
+            "mutableSlots": [],
+            "status": "planned",
+            "children": []
+          },
+          {
+            "nodeId": "gen-page-workspace",
+            "kind": "page-leaf",
+            "pageIds": ["page-workspace"],
+            "output": "pages/workspace.html",
+            "sharedRegions": [],
+            "privateRegions": ["header", "leftPanel", "centerPanel", "rightPanel", "pipelineControl"],
+            "mutableSlots": [],
+            "status": "planned",
+            "children": []
+          },
+          {
+            "nodeId": "gen-page-settings",
+            "kind": "page-leaf",
+            "pageIds": ["page-settings"],
+            "output": "pages/settings.html",
+            "sharedRegions": [],
+            "privateRegions": ["settingsCard"],
+            "mutableSlots": [],
+            "status": "planned",
+            "children": []
+          }
+        ]
+      }
+    }
+  },
+  "designSource": {
+    "operatingMode": "free-explore",
+    "libraryIdentity": null,
+    "libraryPath": null,
+    "cssFilePath": "d:\\Project-fish-short-drama-platform\\fish-short-drama-platform\\mockup-preview\\colors_and_type.css",
+    "brandPrefix": "dnb",
+    "themeMode": "light",
+    "designDecisionSummary": "暖调人文导演手记风格：暖白基底(#faf6f0) + 朱红强调(#b42c2c) + Noto Serif SC衬线标题 + 纯色扁平组件，拒绝渐变/玻璃态/发光",
+    "componentContractKind": null,
+    "forbiddenInventedComponents": [],
+    "allowedComponents": [],
+    "styleConstraints": {
+      "radiusMax": 12,
+      "staticShadowAlphaMax": 0.05
+    },
+    "productContext": {
+      "kitType": null,
+      "productType": "AI短剧创作平台"
+    },
+    "actualTokenNameReference": [
+      { "semanticPurpose": "页面根背景", "tokenName": "dnb-bg-root" },
+      { "semanticPurpose": "卡片/面板背景", "tokenName": "dnb-bg-elevated" },
+      { "semanticPurpose": "主强调色", "tokenName": "dnb-primary-500" },
+      { "semanticPurpose": "主文字", "tokenName": "dnb-text-primary" },
+      { "semanticPurpose": "次要文字", "tokenName": "dnb-text-secondary" }
+    ]
+  },
+  "pages": [
+    {
+      "nodeId": "page-index",
+      "slug": "index",
+      "title": "首页",
+      "htmlSrc": "pages/index.html",
+      "pageIndex": 1,
+      "stateGroupId": null,
+      "stateRole": null,
+      "baseStatePageId": null,
+      "sharedShellContract": [],
+      "mutableRegions": [],
+      "derivedFromHtmlSrc": null,
+      "derivationType": "original",
+      "sourcePageId": null,
+      "sourceHtmlSrc": null,
+      "pageType": "task-driven",
+      "businessScenario": "项目列表首页：创建项目表单 + 项目列表（我的/公开 Tab）+ 左侧导航边栏",
+      "visualNorthStar": "左侧边栏+主内容区布局，衬线标题'我的项目'像导演分镜封面手写，暖白卡片列表配朱红操作按钮",
+      "compositionPattern": "Aesthetics §2.1 sidebar-main",
+      "continuityAnchors": ["朱红纯色按钮", "暖白卡片细边框", "底部边框Tab指示器", "衬线标题"],
+      "libraryRestraintMode": false,
+      "imagePlan": []
+    },
+    {
+      "nodeId": "page-workspace",
+      "slug": "workspace",
+      "title": "工作区",
+      "htmlSrc": "pages/workspace.html",
+      "pageIndex": 2,
+      "stateGroupId": null,
+      "stateRole": null,
+      "baseStatePageId": null,
+      "sharedShellContract": [],
+      "mutableRegions": [],
+      "derivedFromHtmlSrc": null,
+      "derivationType": "original",
+      "sourcePageId": null,
+      "sourceHtmlSrc": null,
+      "pageType": "information-dense",
+      "businessScenario": "三栏工作区：剧本创作/资产库 + 剧集管理 + 场景管理 + 流水线控制",
+      "visualNorthStar": "三栏功能分区，等宽字体标注'场次 1 / 剧集 3 / 共 15 集'模拟导演手记，朱红进度条和状态标签",
+      "compositionPattern": "Aesthetics §2.1 three-column",
+      "continuityAnchors": ["朱红纯色按钮", "暖白卡片细边框", "底部边框Tab指示器", "衬线标题", "等宽字体标注"],
+      "libraryRestraintMode": false,
+      "imagePlan": []
+    },
+    {
+      "nodeId": "page-settings",
+      "slug": "settings",
+      "title": "API Key 设置",
+      "htmlSrc": "pages/settings.html",
+      "pageIndex": 3,
+      "stateGroupId": null,
+      "stateRole": null,
+      "baseStatePageId": null,
+      "sharedShellContract": [],
+      "mutableRegions": [],
+      "derivedFromHtmlSrc": null,
+      "derivationType": "original",
+      "sourcePageId": null,
+      "sourceHtmlSrc": null,
+      "pageType": "task-driven",
+      "businessScenario": "API Key 设置页：居中卡片布局，输入框 + 验证状态 + 使用说明",
+      "visualNorthStar": "居中卡片式布局，暖白卡片配朱红保存按钮，底部小字'你的Key仅存储在本地浏览器中'传递安全透明感",
+      "compositionPattern": "Aesthetics §2.1 centered-card",
+      "continuityAnchors": ["朱红纯色按钮", "暖白卡片细边框", "衬线标题", "内嵌输入框"],
+      "libraryRestraintMode": false,
+      "imagePlan": []
+    }
+  ],
+  "assets": [],
+  "wiringPlan": [],
+  "hiddenInteractionPlan": []
+}

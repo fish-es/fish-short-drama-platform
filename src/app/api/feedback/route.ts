@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { v4 as uuid } from 'uuid'
 import { getDatabase, saveDatabase } from '@/services/db.service'
-import { getUserId } from '@/services/user.service'
+import {
+  requireAuth,
+  routeErrorResponse,
+  RouteError,
+} from '@/services/security.service'
 
 export async function GET() {
   const db = await getDatabase()
@@ -13,17 +17,27 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const apiKey = req.headers.get('x-api-key')
-  if (!apiKey) return NextResponse.json({ error: '请先设置 API Key' }, { status: 401 })
+  try {
+    const { userId } = requireAuth(req)
+    const { content, nickname = '匿名用户' } = await req.json()
+    if (typeof content !== 'string' || !content.trim()) {
+      throw new RouteError(400, '内容不能为空')
+    }
 
-  const { content, nickname = '匿名用户' } = await req.json()
-  if (!content || !content.trim()) return NextResponse.json({ error: '内容不能为空' }, { status: 400 })
-
-  const userId = getUserId(apiKey)
-  const db = await getDatabase()
-  const id = uuid()
-  db.run("INSERT INTO feedback (id, user_id, nickname, content, created_at) VALUES (?, ?, ?, ?, ?)", [id, userId, nickname.trim() || '匿名用户', content.trim(), new Date().toISOString()])
-  saveDatabase()
-
-  return NextResponse.json({ id, nickname: nickname.trim() || '匿名用户', content: content.trim(), createdAt: new Date().toISOString() })
+    const safeContent = content.trim().slice(0, 5_000)
+    const safeNickname = typeof nickname === 'string'
+      ? nickname.trim().slice(0, 100) || '匿名用户'
+      : '匿名用户'
+    const createdAt = new Date().toISOString()
+    const db = await getDatabase()
+    const id = uuid()
+    db.run(
+      'INSERT INTO feedback (id, user_id, nickname, content, created_at) VALUES (?, ?, ?, ?, ?)',
+      [id, userId, safeNickname, safeContent, createdAt],
+    )
+    saveDatabase()
+    return NextResponse.json({ id, nickname: safeNickname, content: safeContent, createdAt })
+  } catch (error) {
+    return routeErrorResponse(error)
+  }
 }
