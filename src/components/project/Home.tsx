@@ -26,6 +26,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [creating, setCreating] = useState(false)
   const [showKeyModal, setShowKeyModal] = useState(false)
   const [showTutorialModal, setShowTutorialModal] = useState(false)
+  const [feedbackGuide, setFeedbackGuide] = useState(false)
   const [apiKey, setApiKeyState] = useState('')
   const [feedbackList, setFeedbackList] = useState<FeedbackItem[]>([])
   const [feedbackContent, setFeedbackContent] = useState('')
@@ -134,7 +135,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         </div>
         <div className="sidebar-bottom">
           <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
-          <button onClick={() => document.getElementById('feedback-section')?.scrollIntoView({ behavior: 'smooth' })}><span className="icon">✉</span><span>反馈</span></button>
+          <button onClick={() => setFeedbackGuide(!feedbackGuide)}><span className="icon">✉</span><span>反馈</span></button>
         </div>
       </nav>
 
@@ -150,7 +151,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
           <div className="topbar-right">
             <button className="btn-sm" onClick={() => setShowTutorialModal(true)}>◉ 使用教程</button>
             <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
-            <button className="btn-sm" onClick={() => document.getElementById('feedback-section')?.scrollIntoView({ behavior: 'smooth' })}>✉ 反馈</button>
+            <button className="btn-sm" onClick={() => setFeedbackGuide(!feedbackGuide)}>✉ 反馈</button>
             {!loggedIn && onLoginRequired && (
               <button className="btn-login" onClick={onLoginRequired}>登录 / 注册</button>
             )}
@@ -222,6 +223,21 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
               </div>
             )}
           </div>
+
+          {/* 反馈引导面板 */}
+          {feedbackGuide && (
+            <div className="info-card" style={{ marginBottom: 24, padding: '18px 22px' }}>
+              <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text)' }}>📮 如何反馈</h4>
+              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.8 }}>
+                <p><strong>方式一：</strong>在下方「问题与建议」表单直接提交，所有用户可见。</p>
+                <p style={{ marginTop: 4 }}>
+                  <strong>方式二：</strong>
+                  访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>GitHub Issues 页面</a> 提交 Issue，适合复杂 bug 或功能需求。
+                </p>
+              </div>
+              <button onClick={() => setFeedbackGuide(false)} className="btn-ghost-sm" style={{ marginTop: 8, color: 'var(--color-text-tertiary)' }}>收起 ↑</button>
+            </div>
+          )}
 
           {/* 最近提交记录 */}
           <div className="commit-section">
@@ -342,7 +358,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <p>快速上手短剧开发平台的三步流程：</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginBottom: 20 }}>
               {[
-                { n: 1, t: '获取 API Key', d: '访问 Agnes AI 注册账号，在 API Keys 设置页创建 Key' },
+                { n: 1, t: '获取 API Key', d: <>访问 <a href="https://platform.agnes-ai.com/login" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>Agnes AI 注册页面</a> 注册账号，在 <a href="https://platform.agnes-ai.com/settings/apiKeys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>API Keys 设置页</a> 创建 Key</> },
                 { n: 2, t: '设置 Key', d: '点击「API Key」按钮，粘贴 Key 并保存' },
                 { n: 3, t: '创建项目', d: '输入短剧名称，选择画面比例、集数和模板，点击创建' },
               ].map(step => (
