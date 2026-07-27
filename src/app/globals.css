@@ -555,6 +555,29 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
 }
 
 /* ================================================================
+   V5.2 — TOPBAR TITLE + LOGIN + COMMIT TABLE
+   ================================================================ */
+
+.topbar-title { font-family: var(--font-display); font-size: 18px; font-weight: 600; color: var(--color-accent); }
+
+.btn-login { padding: 6px 16px; font-size: 12px; font-family: var(--font-sans); font-weight: 600; border-radius: var(--radius-sm); cursor: pointer; border: none; background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover)); color: #fff; transition: opacity 0.2s ease; }
+.btn-login:hover { opacity: 0.85; }
+
+.commit-section { margin-bottom: 24px; }
+.commit-header { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; cursor: pointer; user-select: none; }
+.commit-header-left { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; color: var(--color-text); }
+.commit-header-left .arrow { font-size: 10px; transition: transform 0.25s ease; display: inline-block; }
+.commit-count { font-size: 11px; color: var(--color-text-tertiary); margin-left: 4px; }
+.commit-list { overflow: hidden; transition: max-height 0.35s ease; }
+.commit-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+.commit-table td, .commit-table th { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--color-border); }
+.commit-table th { font-size: 10px; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+.commit-table tr:hover td { background: var(--color-surface); }
+.commit-hash { font-family: monospace; font-size: 12px; color: var(--color-accent); }
+.commit-msg { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-time { color: var(--color-text-tertiary); font-size: 11px; white-space: nowrap; }
+
+/* ================================================================
    RESPONSIVE
    ================================================================ */
 

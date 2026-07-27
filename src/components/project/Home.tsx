@@ -36,6 +36,19 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [changelogContent, setChangelogContent] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
+  const [commitsOpen, setCommitsOpen] = useState(true)
+  const [commits] = useState([
+    { hash: '7945760', author: 'fish-es', message: 'Merge pull request #53 from shixigege/dev', time: '2026/7/26' },
+    { hash: 'a3f2c81', author: 'fish-es', message: 'fix: 修复登录态持久化问题', time: '2026/7/25' },
+    { hash: 'e8b1d47', author: 'shixigege', message: 'feat: 新增环境标识徽章 deploy-env 服务', time: '2026/7/25' },
+    { hash: 'c2a9033', author: 'fish-es', message: 'refactor: 重构 API 客户端认证逻辑', time: '2026/7/24' },
+    { hash: 'f6d7e22', author: 'shixigege', message: 'feat: UI V5 设计系统迁移', time: '2026/7/24' },
+    { hash: 'b41a7c9', author: 'fish-es', message: 'fix: 剧集生成重试机制优化', time: '2026/7/23' },
+    { hash: 'd93e855', author: 'fish-es', message: 'feat: 新增一键生成全部剧集功能', time: '2026/7/22' },
+    { hash: '7e2c1b4', author: 'shixigege', message: 'style: 侧边栏深色主题适配', time: '2026/7/22' },
+    { hash: '5a8f3d6', author: 'fish-es', message: 'fix: 封面图保护链接鉴权修复', time: '2026/7/21' },
+    { hash: '1c6b9e0', author: 'fish-es', message: 'chore: 升级 Next.js 16 适配', time: '2026/7/20' },
+  ])
 
   useEffect(() => {
     setApiKeyState(localStorage.getItem('agnes_api_key') || '')
@@ -116,8 +129,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         </div>
         <div className="sidebar-nav">
           <button className="active"><span className="icon">▶</span><span>项目</span></button>
-          <button><span className="icon">✎</span><span>剧本</span></button>
-          <button><span className="icon">■</span><span>资产库</span></button>
+          <button onClick={() => alert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
+          <button onClick={() => alert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
         </div>
         <div className="sidebar-bottom">
           <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
@@ -130,13 +143,17 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
-            <span className="topbar-bc">短剧开发平台 <span className="sep">/</span> 项目工作台</span>
-            {deployInfo && <span className={`badge ${deployInfo?.pr ? 'badge-yellow' : deployInfo?.branch === 'main' ? 'badge-green' : 'badge-gray'}`}>{deployInfo?.pr ? '测试版' : deployInfo?.branch === 'main' ? '正式版' : deployInfo?.branch === 'dev' ? '实验版' : '本地'}</span>}
+            <span className="topbar-title">短剧开发平台</span>
+            <span className={`badge ${getDeployEnv(deployInfo).badgeClass}`}>{getDeployEnv(deployInfo).label}</span>
+            <span className="topbar-bc"><span className="sep">/</span> 项目工作台</span>
           </div>
           <div className="topbar-right">
             <button className="btn-sm" onClick={() => setShowTutorialModal(true)}>◉ 使用教程</button>
             <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
             <button className="btn-sm" onClick={() => document.getElementById('feedback-section')?.scrollIntoView({ behavior: 'smooth' })}>✉ 反馈</button>
+            {!loggedIn && onLoginRequired && (
+              <button className="btn-login" onClick={onLoginRequired}>登录 / 注册</button>
+            )}
           </div>
         </div>
 
@@ -204,6 +221,31 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                 </select>
               </div>
             )}
+          </div>
+
+          {/* 最近提交记录 */}
+          <div className="commit-section">
+            <div className="commit-header" onClick={() => setCommitsOpen(!commitsOpen)}>
+              <div className="commit-header-left">
+                <span className="arrow">{commitsOpen ? '▼' : '▶'}</span>
+                最近提交记录<span className="commit-count">({commits.length})</span>
+              </div>
+            </div>
+            <div className="commit-list" style={{ maxHeight: commitsOpen ? '600px' : '0' }}>
+              <table className="commit-table">
+                <thead><tr><th>提交</th><th>作者</th><th>说明</th><th>时间</th></tr></thead>
+                <tbody>
+                  {commits.map(c => (
+                    <tr key={c.hash}>
+                      <td className="commit-hash">{c.hash}</td>
+                      <td>{c.author}</td>
+                      <td className="commit-msg">{c.message}</td>
+                      <td className="commit-time">{c.time}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
 
           {/* PROJECT LIST (V5: 下划线 tab) */}

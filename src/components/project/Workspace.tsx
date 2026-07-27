@@ -1,18 +1,24 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store'
-import { logout } from '@/services/api.client'
 import ScriptChat from '@/components/script/ScriptChat'
 import EpisodeList from '@/components/episode/EpisodeList'
 import SceneList from '@/components/scene/SceneList'
 import PipelineControl from '@/components/pipeline/PipelineControl'
 import AssetLibrary from '@/components/assets/AssetLibrary'
+import { getDeployEnv, DeployInfo } from '@/services/deploy-env'
+import { logout } from '@/services/api.client'
 
 export default function Workspace() {
   const { currentProject, clearProject, currentEpisodeId, episodes } = useAppStore()
   const [leftTab, setLeftTab] = useState<'script' | 'assets'>('script')
   const [bannerCollapsed, setBannerCollapsed] = useState(false)
+  const [deployInfo, setDeployInfo] = useState<DeployInfo | null>(null)
+
+  useEffect(() => {
+    fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
+  }, [])
 
   if (!currentProject) return null
 
@@ -43,8 +49,11 @@ export default function Workspace() {
         {/* TOPBAR */}
         <div className="topbar">
           <div className="topbar-left">
+            <span className="topbar-title">短剧开发平台</span>
+            <span className={`badge ${getDeployEnv(deployInfo).badgeClass}`}>{getDeployEnv(deployInfo).label}</span>
             <span className="topbar-bc">
-              <a onClick={clearProject}>短剧开发平台</a>
+              <span className="sep">/</span>
+              <a onClick={clearProject}>项目</a>
               <span className="sep">/</span>
               {currentProject.dramaTitle || currentProject.name}
             </span>

@@ -124,226 +124,224 @@ export default function LoginPage({ onComplete }: Props) {
   const PasswordWarning = ({ value }: { value: string }) => {
     if (!value || value.length >= 6) return null
     return (
-      <p className="text-red-500 text-xs mt-1">
+      <p style={{ color: 'var(--color-error)', fontSize: 11, marginTop: 4 }}>
         密码长度不能少于6位（当前 {value.length} 位）
       </p>
     )
   }
 
   return (
-    <div className="text-white flex items-center justify-center">
-      <div className="bg-gray-800 rounded-xl p-6 w-full border border-gray-700 shadow-xl">
+    <div className="animate-enter-scale" style={{ background: 'var(--color-surface)', borderRadius: 'var(--radius-lg)', padding: 32, border: '1px solid var(--color-border)', boxShadow: 'var(--shadow-lg)' }}>
 
-        {/* Header */}
-        <h1 className="text-2xl font-bold text-center mb-1">短剧开发平台</h1>
-        <p className="text-gray-400 text-center text-sm mb-6">AI 驱动的短剧自动生成工具</p>
+      {/* Header */}
+      <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, textAlign: 'center', marginBottom: 4, color: 'var(--color-text)' }}>短剧开发平台</h1>
+      <p style={{ textAlign: 'center', fontSize: 13, marginBottom: 24, color: 'var(--color-text-secondary)' }}>AI 驱动的短剧自动生成工具</p>
 
-        {/* Mode tabs (login / register) */}
-        {(mode === 'login' || mode === 'register') && (
-          <div className="flex rounded-lg overflow-hidden border border-gray-700 mb-6">
-            <button
-              onClick={() => switchMode('login')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                mode === 'login' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
-              }`}
-            >
-              登录
-            </button>
-            <button
-              onClick={() => switchMode('register')}
-              className={`flex-1 py-2 text-sm font-medium transition-colors ${
-                mode === 'register' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-white hover:bg-gray-700'
-              }`}
-            >
-              注册
-            </button>
-          </div>
-        )}
-
-        {/* Back button for forgot / reset modes */}
-        {(mode === 'forgot' || mode === 'reset') && (
+      {/* Mode tabs (login / register) */}
+      {(mode === 'login' || mode === 'register') && (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--color-border)', marginBottom: 24 }}>
           <button
             onClick={() => switchMode('login')}
-            className="flex items-center gap-1 text-gray-400 hover:text-white text-sm mb-4 transition-colors"
+            className={`project-tab ${mode === 'login' ? 'active' : ''}`}
+            style={{ flex: 1, textAlign: 'center' }}
           >
-            ← 返回登录
+            登录
           </button>
-        )}
+          <button
+            onClick={() => switchMode('register')}
+            className={`project-tab ${mode === 'register' ? 'active' : ''}`}
+            style={{ flex: 1, textAlign: 'center' }}
+          >
+            注册
+          </button>
+        </div>
+      )}
 
-        {/* ── Login form ── */}
-        {mode === 'login' && (
-          <div className="space-y-4">
-            <Field label="用户名">
-              <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="输入用户名"
-                autoComplete="username"
-                className={inputCls}
-              />
-            </Field>
-            <Field label="密码">
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleLogin()}
-                placeholder="输入密码"
-                autoComplete="current-password"
-                className={inputCls}
-              />
-            </Field>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button onClick={handleLogin} disabled={loading} className={btnCls}>
-              {loading ? '登录中...' : '登录'}
+      {/* Back button for forgot / reset modes */}
+      {(mode === 'forgot' || mode === 'reset') && (
+        <button
+          onClick={() => switchMode('login')}
+          style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 13, marginBottom: 16, color: 'var(--color-text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}
+        >
+          ← 返回登录
+        </button>
+      )}
+
+      {/* ── Login form ── */}
+      {mode === 'login' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Field label="用户名">
+            <input
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="输入用户名"
+              autoComplete="username"
+              className="input-field"
+            />
+          </Field>
+          <Field label="密码">
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="输入密码"
+              autoComplete="current-password"
+              className="input-field"
+            />
+          </Field>
+          {error && <p style={{ color: 'var(--color-error)', fontSize: 13 }}>{error}</p>}
+          <button onClick={handleLogin} disabled={loading} className="btn-accent" style={{ width: '100%', justifyContent: 'center', padding: '10px 0' }}>
+            {loading ? '登录中...' : '登录'}
+          </button>
+          <p style={{ textAlign: 'center' }}>
+            <button
+              onClick={() => switchMode('forgot')}
+              style={{ color: 'var(--color-accent)', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              忘记密码？
             </button>
-            <p className="text-center">
-              <button
-                onClick={() => switchMode('forgot')}
-                className="text-blue-400 hover:text-blue-300 text-sm transition-colors"
-              >
-                忘记密码？
-              </button>
-            </p>
-          </div>
-        )}
+          </p>
+        </div>
+      )}
 
-        {/* ── Register form ── */}
-        {mode === 'register' && (
-          <div className="space-y-4">
-            <Field label="用户名">
-              <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                placeholder="字母、数字、下划线或中文，最多32个字符"
-                autoComplete="username"
-                className={inputCls}
-              />
-            </Field>
-            <Field label="密码">
-              <input
-                type="password"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="至少6位"
-                autoComplete="new-password"
-                className={inputCls}
-              />
-              <PasswordWarning value={password} />
-            </Field>
-            <Field label="确认密码">
-              <input
-                type="password"
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleRegister()}
-                placeholder="再次输入密码"
-                autoComplete="new-password"
-                className={inputCls}
-              />
-              {confirmPassword && confirmPassword !== password && (
-                <p className="text-red-500 text-xs mt-1">两次输入的密码不一致</p>
-              )}
-            </Field>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button onClick={handleRegister} disabled={loading} className={btnCls}>
-              {loading ? '注册中...' : '注册'}
-            </button>
-          </div>
-        )}
-
-        {/* ── Forgot password form ── */}
-        {mode === 'forgot' && (
-          <div className="space-y-4">
-            <p className="text-gray-400 text-sm">
-              输入你的用户名，系统会生成一个重置令牌，用它来设置新密码。
-            </p>
-            <Field label="用户名">
-              <input
-                type="text"
-                value={username}
-                onChange={e => setUsername(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleForgot()}
-                placeholder="输入你的用户名"
-                className={inputCls}
-              />
-            </Field>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            {!generatedResetToken ? (
-              <button onClick={handleForgot} disabled={loading} className={btnCls}>
-                {loading ? '生成中...' : '获取重置令牌'}
-              </button>
-            ) : (
-              <div className="space-y-3">
-                <div className="bg-gray-900 border border-green-600 rounded-lg p-3">
-                  <p className="text-green-400 text-xs mb-1">重置令牌（1小时内有效）：</p>
-                  <p className="font-mono text-green-300 break-all select-all text-sm">
-                    {generatedResetToken}
-                  </p>
-                  <p className="text-gray-500 text-xs mt-2">请复制此令牌，然后点击下方按钮使用它重置密码。</p>
-                </div>
-                <button
-                  onClick={() => { setResetToken(generatedResetToken); switchMode('reset') }}
-                  className={btnCls}
-                >
-                  使用令牌重置密码 →
-                </button>
-              </div>
+      {/* ── Register form ── */}
+      {mode === 'register' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <Field label="用户名">
+            <input
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              placeholder="字母、数字、下划线或中文，最多32个字符"
+              autoComplete="username"
+              className="input-field"
+            />
+          </Field>
+          <Field label="密码">
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="至少6位"
+              autoComplete="new-password"
+              className="input-field"
+            />
+            <PasswordWarning value={password} />
+          </Field>
+          <Field label="确认密码">
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleRegister()}
+              placeholder="再次输入密码"
+              autoComplete="new-password"
+              className="input-field"
+            />
+            {confirmPassword && confirmPassword !== password && (
+              <p style={{ color: 'var(--color-error)', fontSize: 11, marginTop: 4 }}>两次输入的密码不一致</p>
             )}
-          </div>
-        )}
+          </Field>
+          {error && <p style={{ color: 'var(--color-error)', fontSize: 13 }}>{error}</p>}
+          <button onClick={handleRegister} disabled={loading} className="btn-accent" style={{ width: '100%', justifyContent: 'center', padding: '10px 0' }}>
+            {loading ? '注册中...' : '注册'}
+          </button>
+        </div>
+      )}
 
-        {/* ── Reset password form ── */}
-        {mode === 'reset' && (
-          <div className="space-y-4">
-            <p className="text-gray-400 text-sm">
-              粘贴你的重置令牌，然后设置新密码。
-            </p>
-            <Field label="重置令牌">
-              <input
-                type="text"
-                value={resetToken}
-                onChange={e => setResetToken(e.target.value)}
-                placeholder="粘贴重置令牌"
-                className={`${inputCls} font-mono`}
-              />
-            </Field>
-            <Field label="新密码">
-              <input
-                type="password"
-                value={newPassword}
-                onChange={e => setNewPassword(e.target.value)}
-                placeholder="至少6位"
-                autoComplete="new-password"
-                className={inputCls}
-              />
-              <PasswordWarning value={newPassword} />
-            </Field>
-            <Field label="确认新密码">
-              <input
-                type="password"
-                value={confirmNewPassword}
-                onChange={e => setConfirmNewPassword(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleReset()}
-                placeholder="再次输入新密码"
-                autoComplete="new-password"
-                className={inputCls}
-              />
-              {confirmNewPassword && confirmNewPassword !== newPassword && (
-                <p className="text-red-500 text-xs mt-1">两次输入的密码不一致</p>
-              )}
-            </Field>
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button onClick={handleReset} disabled={loading} className={btnCls}>
-              {loading ? '重置中...' : '重置密码并登录'}
+      {/* ── Forgot password form ── */}
+      {mode === 'forgot' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
+            输入你的用户名，系统会生成一个重置令牌，用它来设置新密码。
+          </p>
+          <Field label="用户名">
+            <input
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleForgot()}
+              placeholder="输入你的用户名"
+              className="input-field"
+            />
+          </Field>
+          {error && <p style={{ color: 'var(--color-error)', fontSize: 13 }}>{error}</p>}
+          {!generatedResetToken ? (
+            <button onClick={handleForgot} disabled={loading} className="btn-accent" style={{ width: '100%', justifyContent: 'center', padding: '10px 0' }}>
+              {loading ? '生成中...' : '获取重置令牌'}
             </button>
-          </div>
-        )}
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ background: 'var(--color-success-bg)', border: `1px solid var(--color-success)`, borderRadius: 'var(--radius-md)', padding: 12 }}>
+                <p style={{ color: 'var(--color-success)', fontSize: 11, marginBottom: 4 }}>重置令牌（1小时内有效）：</p>
+                <p style={{ fontFamily: 'monospace', color: 'var(--color-success)', fontSize: 13, wordBreak: 'break-all', userSelect: 'all' }}>
+                  {generatedResetToken}
+                </p>
+                <p style={{ color: 'var(--color-text-tertiary)', fontSize: 11, marginTop: 8 }}>请复制此令牌，然后点击下方按钮使用它重置密码。</p>
+              </div>
+              <button
+                onClick={() => { setResetToken(generatedResetToken); switchMode('reset') }}
+                className="btn-accent"
+                style={{ width: '100%', justifyContent: 'center', padding: '10px 0' }}
+              >
+                使用令牌重置密码 →
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
-      </div>
+      {/* ── Reset password form ── */}
+      {mode === 'reset' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <p style={{ color: 'var(--color-text-secondary)', fontSize: 13 }}>
+            粘贴你的重置令牌，然后设置新密码。
+          </p>
+          <Field label="重置令牌">
+            <input
+              type="text"
+              value={resetToken}
+              onChange={e => setResetToken(e.target.value)}
+              placeholder="粘贴重置令牌"
+              className="input-field"
+              style={{ fontFamily: 'monospace' }}
+            />
+          </Field>
+          <Field label="新密码">
+            <input
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              placeholder="至少6位"
+              autoComplete="new-password"
+              className="input-field"
+            />
+            <PasswordWarning value={newPassword} />
+          </Field>
+          <Field label="确认新密码">
+            <input
+              type="password"
+              value={confirmNewPassword}
+              onChange={e => setConfirmNewPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleReset()}
+              placeholder="再次输入新密码"
+              autoComplete="new-password"
+              className="input-field"
+            />
+            {confirmNewPassword && confirmNewPassword !== newPassword && (
+              <p style={{ color: 'var(--color-error)', fontSize: 11, marginTop: 4 }}>两次输入的密码不一致</p>
+            )}
+          </Field>
+          {error && <p style={{ color: 'var(--color-error)', fontSize: 13 }}>{error}</p>}
+          <button onClick={handleReset} disabled={loading} className="btn-accent" style={{ width: '100%', justifyContent: 'center', padding: '10px 0' }}>
+            {loading ? '重置中...' : '重置密码并登录'}
+          </button>
+        </div>
+      )}
+
     </div>
   )
 }
@@ -353,14 +351,8 @@ export default function LoginPage({ onComplete }: Props) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <label className="block text-sm text-gray-400 mb-1">{label}</label>
+      <label style={{ display: 'block', fontSize: 13, color: 'var(--color-text-secondary)', marginBottom: 4 }}>{label}</label>
       {children}
     </div>
   )
 }
-
-const inputCls =
-  'w-full px-4 py-2 bg-gray-900 border border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 text-sm text-white placeholder-gray-600'
-
-const btnCls =
-  'w-full px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm font-medium transition-colors'
