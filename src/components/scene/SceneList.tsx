@@ -9,6 +9,7 @@ import {
   type SubtitleEntry,
 } from '@/services/video-merger.client'
 import { ProtectedImage, ProtectedVideo } from '@/components/common/ProtectedMedia'
+import { useToast } from '@/components/common/Toast'
 
 function assetUrl(path: string): string {
   if (path.startsWith('http')) return path
@@ -19,6 +20,7 @@ const isOwnerProject = () => useAppStore.getState().currentProject?.isOwner !== 
 
 export default function SceneList() {
   const { scenes, updateScene, setVideoUrl } = useAppStore()
+  const toast = useToast()
   const [images, setImages] = useState<Record<string, string>>({})
   const [videos, setVideos] = useState<Record<string, string>>({})
   const [previewImage, setPreviewImage] = useState<{ source: string; sceneId: string } | null>(null)
@@ -128,7 +130,7 @@ export default function SceneList() {
 
       setDownloadMsg('')
     } catch (e: any) {
-      alert(`下载失败: ${e.message}`)
+      toast.error(`下载失败: ${e.message}`)
       setDownloadMsg('')
     } finally {
       setDownloadingId(null)

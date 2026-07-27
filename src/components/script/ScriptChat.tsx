@@ -5,9 +5,11 @@ import { useAppStore } from '@/store'
 import { scriptApi } from '@/services/api.client'
 import { generateOutline, parseOutlineResponse, ParsedOutline } from '@/services/script.client'
 import { generateImage } from '@/services/agnes.client'
+import { useToast } from '@/components/common/Toast'
 
 export default function ScriptChat() {
   const { currentProject, messages, loading, progressMsg, genre, episodeCount, episodes, addMessage, setLoading, setProgressMsg, setEpisodes } = useAppStore()
+  const toast = useToast()
   const [prompt, setPrompt] = useState('')
   const hasOutline = episodes.length > 0
 
@@ -21,7 +23,7 @@ export default function ScriptChat() {
   const handleGenerate = async () => {
     if (!prompt.trim() || !currentProject || hasOutline) return
     const apiKey = localStorage.getItem('agnes_api_key') || ''
-    if (!apiKey) { alert('请先设置 API Key（点击右上角「API Key」按钮）'); return }
+    if (!apiKey) { toast.warning('请先设置 API Key（点击右上角「API Key」按钮）'); return }
     setLoading(true)
     addMessage({ role: 'user', content: prompt })
     try {
@@ -70,7 +72,7 @@ export default function ScriptChat() {
       setPrompt('')
     } catch (e: any) {
       addMessage({ role: 'assistant', content: `错误: ${e.message}` })
-      alert(`生成失败: ${e.message}`)
+      toast.error(`生成失败: ${e.message}`)
     }
     finally { setLoading(false); setProgressMsg('') }
   }

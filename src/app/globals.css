@@ -398,7 +398,7 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(44, 36, 22, 0.5);
   display: flex; align-items: center; justify-content: center;
-  z-index: 300; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  z-index: 300;
 }
 .modal {
   background: var(--color-bg); border-radius: var(--radius-md);
@@ -590,3 +590,50 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
   .script-view { flex-direction: column; }
   .idea-panel { width: 100%; border-right: none; border-bottom: 1px solid var(--color-border); }
 }
+
+/* ================================================================
+   TOAST
+   ================================================================ */
+
+.toast-container {
+  position: fixed; top: 20px; right: 20px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 400; pointer-events: none;
+}
+.toast-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 12px 18px; border-radius: var(--radius-md);
+  background: var(--color-bg); border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-lg); pointer-events: auto;
+  font-size: 13px; font-family: var(--font-sans);
+  animation: toastEnter 0.3s ease-out both;
+  max-width: 380px;
+}
+.toast-item.toast-leaving {
+  animation: toastLeave 0.3s ease-in forwards;
+}
+.toast-icon {
+  width: 20px; height: 20px; min-width: 20px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: #fff;
+}
+.toast-success .toast-icon { background: var(--color-success); }
+.toast-error .toast-icon { background: var(--color-error); }
+.toast-warning .toast-icon { background: var(--color-warning); }
+.toast-info .toast-icon { background: var(--color-accent); }
+.toast-msg { color: var(--color-text); line-height: 1.4; }
+
+@keyframes toastEnter { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
+@keyframes toastLeave { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(20px); } }
+
+/* ================================================================
+   DANGER FILLED BUTTON
+   ================================================================ */
+
+.btn-danger-filled {
+  padding: 8px 18px; font-size: 12px; font-family: var(--font-sans); font-weight: 500;
+  background: var(--color-error); color: #fff; border: none; border-radius: var(--radius-sm);
+  cursor: pointer; transition: background 0.2s ease; white-space: nowrap;
+}
+.btn-danger-filled:hover { opacity: 0.85; }
+.btn-danger-filled:active { transform: scale(0.97); }

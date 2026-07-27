@@ -4,9 +4,11 @@ import { useState } from 'react'
 import { useAppStore } from '@/store'
 import { episodeApi } from '@/services/api.client'
 import { generateEpisodeScenes, parseEpisodeScenesResponse } from '@/services/script.client'
+import { useToast } from '@/components/common/Toast'
 
 export default function EpisodeList() {
   const { currentProject, episodes, scriptId, currentEpisodeId, setCurrentEpisodeId, updateEpisode, setScenes, resetPipeline } = useAppStore()
+  const toast = useToast()
   const [generating, setGenerating] = useState<string | null>(null)
   const [generatingAll, setGeneratingAll] = useState(false)
 
@@ -27,7 +29,7 @@ export default function EpisodeList() {
       setCurrentEpisodeId(episodeId)
       setScenes(result.scenes)
       resetPipeline()
-    } catch (e: any) { alert(`生成失败: ${e.message}`) }
+    } catch (e: any) { toast.error(`生成失败: ${e.message}`) }
     finally { setGenerating(null) }
   }
 

@@ -6,6 +6,8 @@ import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 import { getDeployEnv } from '@/services/deploy-env'
+import { useToast } from '@/components/common/Toast'
+import { useConfirm } from '@/components/common/ConfirmModal'
 
 interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string }
 
@@ -16,6 +18,8 @@ interface HomeProps {
 
 export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const { projects, setProjects, setCurrentProject, setEpisodes, setGenre: setStoreGenre, setEpisodeCount: setStoreEpisodeCount } = useAppStore()
+  const toast = useToast()
+  const { confirm } = useConfirm()
   const [newName, setNewName] = useState('')
   const [aspectRatio, setAspectRatio] = useState('9:16')
   const [genre, setGenre] = useState('auto')
@@ -72,11 +76,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const handleSaveKey = () => { setApiKey(apiKey); setShowKeyModal(false); projectApi.list().then(setProjects).catch(() => {}) }
   const [checkingKey, setCheckingKey] = useState(false)
   const handleCheckKey = async () => {
-    if (!apiKey) { alert('请先填写 API Key'); return }
+    if (!apiKey) { toast.warning('请先填写 API Key'); return }
     try {
       const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }) })
-      if (res.ok) { alert('API Key 有效') } else { alert(`API Key 无效 (${res.status})`) }
-    } catch (e: any) { alert('检查失败: ' + e.message) }
+      if (res.ok) { toast.success('API Key 有效') } else { toast.error(`API Key 无效 (${res.status})`) }
+    } catch (e: any) { toast.error('检查失败: ' + e.message) }
   }
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -84,20 +88,20 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     const epCount = episodeCount === 'custom' ? parseInt(customEpisodeCount) || 15 : parseInt(episodeCount)
     setStoreEpisodeCount(projectType === 'drama' ? epCount : 1)
     try { const project = await projectApi.create(newName.trim(), aspectRatio, projectType); setProjects([project, ...projects]); setCurrentProject(project); setNewName('') }
-    catch (e: any) { alert(e.message) } finally { setCreating(false) }
+    catch (e: any) { toast.error(e.message) } finally { setCreating(false) }
   }
   const handleOpen = async (project: any) => {
     setCurrentProject(project)
     try { const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }); const data = await res.json(); if (data?.episodes?.length) setEpisodes(data.episodes, data.scriptId) } catch { }
   }
-  const handleDelete = async (id: string) => { if (!confirm('确定要删除这个项目吗？')) return; await projectApi.delete(id); setProjects(projects.filter(p => p.id !== id)) }
+  const handleDelete = async (id: string) => { const ok = await confirm({ title: '确认删除', message: '确定要删除这个项目吗？', confirmText: '删除', danger: true }); if (!ok) return; await projectApi.delete(id); setProjects(projects.filter(p => p.id !== id)) }
   const handleRegenCover = async (project: any) => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (!key) { alert('请先设置 API Key'); return }
+    if (!key) { toast.warning('请先设置 API Key'); return }
     const title = project.dramaTitle || project.name; const ar = project.aspectRatio || '16:9'
     const coverSize = ar === '9:16' ? '768x1024' : ar === '1:1' ? '1024x1024' : '1024x768'
     try { const url = await generateImage(`${title}，短剧封面海报，电影感`, coverSize, key); await fetch('/api/asset/image', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, body: JSON.stringify({ projectId: project.id, type: 'cover', name: '', imageUrl: url }) }); setProjects(projects.map(p => p.id === project.id ? { ...p, coverImage: url } : p)) }
-    catch (e: any) { alert('封面生成失败: ' + e.message) }
+    catch (e: any) { toast.error('封面生成失败: ' + e.message) }
   }
   const handleTogglePublic = async (project: any) => {
     const newPublic = !project.isPublic
@@ -130,8 +134,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         </div>
         <div className="sidebar-nav">
           <button className="active"><span className="icon">▶</span><span>项目</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
+          <button onClick={() => toast.info('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
+          <button onClick={() => toast.info('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
         </div>
         <div className="sidebar-bottom">
           <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
