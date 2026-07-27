@@ -283,7 +283,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                   <div className="pr-left">
                     {project.coverImage ? (
                       <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
-                        <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" className="w-full h-full object-cover" />
                       </div>
                     ) : (
                       <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-alt)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); handleRegenCover(project) }}>🎬</div>
