@@ -339,7 +339,7 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
 
 .project-row {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 14px 16px; background: var(--color-bg);
+  padding: 16px 20px; background: var(--color-bg);
   border-bottom: 1px solid var(--color-border); cursor: pointer;
   transition: background 0.15s ease;
 }
