@@ -26,7 +26,9 @@ jobs:
             cd ~/fish-short-drama-platform-preview
             git fetch origin pull/${{ github.event.pull_request.number }}/head
             git checkout -B pr-${{ github.event.pull_request.number }} FETCH_HEAD
-            echo '{"pr":${{ github.event.pull_request.number }},"author":"${{ github.event.pull_request.user.login }}","title":"${{ github.event.pull_request.title }}","time":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}' > public/deploy-info.json
+            AUTHOR=$(git log -1 --pretty=%an | tr -d '\\"[:cntrl:]' | head -c 80)
+            TITLE=$(git log -1 --pretty=%s | tr -d '\\"[:cntrl:]' | head -c 200)
+            echo "{\"env\":\"preview\",\"pr\":${{ github.event.pull_request.number }},\"author\":\"$AUTHOR\",\"title\":\"$TITLE\",\"time\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > public/deploy-info.json
             git log --pretty=format:'{"hash":"%h","author":"%an","message":"%s","time":"%aI"}' -20 | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/commits.json
             git shortlog -sn --no-merges | head -20 | awk '{print "{\"commits\":" $1 ",\"name\":\"" substr($0, index($0,$2)) "\"}"}' | sed 's/$/,/' | sed '1s/^/[/' | sed '$s/,$/]/' > public/contributors.json
             docker build -t fish-drama-preview .

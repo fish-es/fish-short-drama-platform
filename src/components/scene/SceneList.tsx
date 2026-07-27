@@ -18,7 +18,7 @@ function assetUrl(path: string): string {
 const isOwnerProject = () => useAppStore.getState().currentProject?.isOwner !== false
 
 export default function SceneList() {
-  const { scenes, updateScene } = useAppStore()
+  const { scenes, updateScene, setVideoUrl } = useAppStore()
   const [images, setImages] = useState<Record<string, string>>({})
   const [videos, setVideos] = useState<Record<string, string>>({})
   const [previewImage, setPreviewImage] = useState<{ source: string; sceneId: string } | null>(null)
@@ -44,7 +44,7 @@ export default function SceneList() {
           headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
         })
           .then(res => res.json())
-          .then(data => { if (data.filePath) setVideos(prev => ({ ...prev, [scene.id]: data.filePath })) })
+          .then(data => { if (data.filePath) { setVideos(prev => ({ ...prev, [scene.id]: data.filePath })); setVideoUrl(scene.id, data.filePath) } })
           .catch(() => {})
       }
     })

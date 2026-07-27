@@ -12,7 +12,7 @@ import {
 } from '@/services/video-merger.client'
 
 export default function PipelineControl() {
-  const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress,
+  const { scenes, currentProject, currentEpisodeId, pipelineStatus, pipelineStep, pipelineProgress, videoUrls,
     updateScene, setPipelineStatus, setPipelineStep, setPipelineProgress, resetPipeline } = useAppStore()
   const [subtitles, setSubtitles] = useState(true)
   const [elapsed, setElapsed] = useState(0)
@@ -24,7 +24,6 @@ export default function PipelineControl() {
   const [mergeStatus, setMergeStatus] = useState<'idle' | 'merging' | 'done' | 'error'>('idle')
   const [mergeSubtitles, setMergeSubtitles] = useState(true)
   const [mergeProgressMsg, setMergeProgressMsg] = useState('')
-  const [showServerFallback, setShowServerFallback] = useState(false)
 
   // Scene selection for merge
   const [selectedSceneIds, setSelectedSceneIds] = useState<Set<string>>(new Set())
@@ -274,48 +273,11 @@ export default function PipelineControl() {
     setPipelineStep('已停止')
   }
 
-  const handleAssemble = async () => {
-    if (!currentProject) return
-    setPipelineStatus('running')
-    setPipelineStep('合成最终视频...')
-    try {
-      const res = await fetch('/api/ffmpeg', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
-        body: JSON.stringify({ projectId: currentProject.id, episodeId: currentEpisodeId, subtitles })
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error)
-
-      // Download via browser
-      const fileRes = await fetch(data.downloadUrl, {
-        headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
-      })
-      if (!fileRes.ok) throw new Error('合成文件下载失败')
-      const blob = await fileRes.blob()
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = data.filename || 'video.mp4'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-
-      setPipelineStatus('completed')
-      setPipelineStep('合成完成，已下载')
-    } catch (e: any) {
-      setPipelineStep(`合成失败: ${e.message}`)
-      setPipelineStatus('error')
-    }
-  }
-
   /** Client-side merge — only merges SELECTED scenes */
   const handleClientMerge = async () => {
     if (!currentProject || selectedCount < 1) return
 
     setMergeStatus('merging')
-    setShowServerFallback(false)
 
     const projectName = currentProject.dramaTitle || currentProject.name || 'video'
     const episodeNumber = currentEpisodeId
@@ -330,29 +292,23 @@ export default function PipelineControl() {
       // Only use selected scenes
       const selectedScenes = videoReadyScenes.filter(s => selectedSceneIds.has(s.id))
 
-      const sceneVideos = selectedScenes.map((s, i) => ({
-        url: '',
-        dialogue: s.dialogue,
-        duration: s.duration,
-        sceneId: s.id,
-        order: i,
-      }))
+      const sceneVideos = selectedScenes.map((s, i) => {
+        const url = videoUrls[s.id] || ''
+        return {
+          url,
+          dialogue: s.dialogue,
+          duration: s.duration,
+          sceneId: s.id,
+          order: i,
+        }
+      })
 
-      // Fetch video URLs for selected scenes in parallel
-      setMergeProgressMsg('获取视频地址...')
-      const urlResults = await Promise.all(
-        sceneVideos.map(sv =>
-          fetch(`/api/scene/video?sceneId=${sv.sceneId}`)
-            .then(res => res.json())
-            .then(data => ({ ...sv, url: data.filePath || '' }))
-        )
-      )
-      for (const sv of urlResults) {
-        if (!sv.url) throw new Error(`场景 ${sv.order + 1} 视频地址获取失败`)
+      for (const sv of sceneVideos) {
+        if (!sv.url) throw new Error(`场景 ${sv.order + 1} 视频地址未就绪`)
       }
 
       const result: MergeResult = await mergeVideosWithSubtitles(
-        urlResults,
+        sceneVideos,
         mergeSubtitles,
         (progress: ProgressStep) => {
           switch (progress.step) {
@@ -390,7 +346,6 @@ export default function PipelineControl() {
     } catch (e: any) {
       setMergeStatus('error')
       setMergeProgressMsg(`客户端合并失败: ${e.message}`)
-      setShowServerFallback(true)
     }
   }
 
@@ -494,14 +449,6 @@ export default function PipelineControl() {
               </button>
             )}
 
-            {showServerFallback && (
-              <button
-                onClick={handleAssemble}
-                className="btn-secondary px-4 py-2 text-sm"
-              >
-                服务端合成（较慢）
-              </button>
-            )}
           </div>
 
           {/* Progress */}

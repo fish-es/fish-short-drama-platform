@@ -5,6 +5,7 @@ import { useAppStore } from '@/store'
 import { projectApi, setApiKey, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
+import { getDeployEnv } from '@/services/deploy-env'
 
 interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string }
 
