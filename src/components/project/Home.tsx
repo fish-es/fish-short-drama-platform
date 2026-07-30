@@ -37,8 +37,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [changelogContent, setChangelogContent] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
   const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
-  const [commitsOpen, setCommitsOpen] = useState(true)
-  const [commits] = useState([
+  const [commitPanelOpen, setCommitPanelOpen] = useState(false)
+  const [commits, setCommits] = useState([
     { hash: '7945760', author: 'fish-es', message: 'Merge pull request #53 from shixigege/dev', time: '2026/7/26' },
     { hash: 'a3f2c81', author: 'fish-es', message: 'fix: 修复登录态持久化问题', time: '2026/7/25' },
     { hash: 'e8b1d47', author: 'shixigege', message: 'feat: 新增环境标识徽章 deploy-env 服务', time: '2026/7/25' },
@@ -50,6 +50,13 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     { hash: '5a8f3d6', author: 'fish-es', message: 'fix: 封面图保护链接鉴权修复', time: '2026/7/21' },
     { hash: '1c6b9e0', author: 'fish-es', message: 'chore: 升级 Next.js 16 适配', time: '2026/7/20' },
   ])
+  const [contributors, setContributors] = useState([
+    { name: 'fish-es', commits: 19 },
+    { name: 'chenzh659', commits: 9 },
+    { name: 'sea-fish-es', commits: 8 },
+    { name: 'Lily', commits: 5 },
+    { name: 'shixigege', commits: 4 },
+  ])
 
   useEffect(() => {
     setApiKeyState(localStorage.getItem('agnes_api_key') || '')
@@ -57,6 +64,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
     fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
     fetch('/api/changelog').then(r => r.json()).then(setChangelog).catch(() => {})
+    fetch('/commits.json').then(r => r.ok ? r.json() : null).then(d => d && setCommits(d)).catch(() => {})
+    fetch('/contributors.json').then(r => r.ok ? r.json() : null).then(d => d && setContributors(d)).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -149,6 +158,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <span className="topbar-bc"><span className="sep">/</span> 项目工作台</span>
           </div>
           <div className="topbar-right">
+            <button className="btn-commit" onClick={() => setCommitPanelOpen(true)}><span className="commit-dot"></span>提交记录 ({commits.length})</button>
             <button className="btn-sm" onClick={() => setShowTutorialModal(true)}>◉ 使用教程</button>
             <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
             <button className="btn-sm" onClick={() => setFeedbackGuide(!feedbackGuide)}>✉ 反馈</button>
@@ -239,31 +249,6 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             </div>
           )}
 
-          {/* 最近提交记录 */}
-          <div className="commit-section">
-            <div className="commit-header" onClick={() => setCommitsOpen(!commitsOpen)}>
-              <div className="commit-header-left">
-                <span className="arrow">{commitsOpen ? '▼' : '▶'}</span>
-                最近提交记录<span className="commit-count">({commits.length})</span>
-              </div>
-            </div>
-            <div className="commit-list" style={{ maxHeight: commitsOpen ? '600px' : '0' }}>
-              <table className="commit-table">
-                <thead><tr><th>提交</th><th>作者</th><th>说明</th><th>时间</th></tr></thead>
-                <tbody>
-                  {commits.map(c => (
-                    <tr key={c.hash}>
-                      <td className="commit-hash">{c.hash}</td>
-                      <td>{c.author}</td>
-                      <td className="commit-msg">{c.message}</td>
-                      <td className="commit-time">{c.time}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           {/* PROJECT LIST (V5: 下划线 tab) */}
           <div className="animate-enter-up delay-100">
             <div className="project-tabs">
@@ -311,6 +296,32 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
 
           {/* HOME BOTTOM (V5: 2栏) */}
           <div className="home-bottom" style={{ marginTop: 22 }}>
+            {/* 贡献排行 */}
+            <div className="info-card">
+              <h4>贡献排行</h4>
+              <div className="rank-list">
+                {contributors.map((c, i) => {
+                  const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : 'normal'
+                  return (
+                    <div key={c.name} className="rank-item">
+                      <div className={`rank-num ${cls}`}>{i + 1}</div>
+                      <div className="rank-avatar-wrap">
+                        <div className="rank-avatar-letter">{c.name[0].toUpperCase()}</div>
+                        <img src={`https://github.com/${c.name}.png`} alt={c.name} className="rank-avatar-img" onError={e => e.currentTarget.style.display = 'none'} />
+                      </div>
+                      <div className="rank-info">
+                        <a href={`https://github.com/${c.name}`} target="_blank" rel="noopener noreferrer" className="rank-name">{c.name}</a>
+                      </div>
+                      <div className="rank-bar-wrap">
+                        <div className="rank-bar" style={{ width: `${(c.commits / (contributors[0]?.commits || 1)) * 100}%` }} />
+                      </div>
+                      <div className="rank-commits">{c.commits}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* 更新日志 */}
             <div className="info-card">
               <h4>更新日志</h4>
@@ -347,6 +358,32 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
               )) : <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>暂无反馈</div>}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* ===== SLIDE-OUT COMMIT PANEL ===== */}
+      <div className={`panel-overlay ${commitPanelOpen ? 'open' : ''}`} onClick={() => setCommitPanelOpen(false)} />
+      <div className={`commit-panel ${commitPanelOpen ? 'open' : ''}`}>
+        <div className="panel-header">
+          <div>
+            <h3>最近提交记录<span className="panel-count">({commits.length})</span></h3>
+          </div>
+          <button className="panel-close" onClick={() => setCommitPanelOpen(false)}>✕</button>
+        </div>
+        <div className="panel-body">
+          {commits.map(c => (
+            <div key={c.hash} className="commit-item">
+              <div className="commit-item-top">
+                <span className="commit-hash">{c.hash}</span>
+                <span className="commit-time">{c.time}</span>
+              </div>
+              <div className="commit-author">{c.author}</div>
+              <div className="commit-msg">{c.message}</div>
+            </div>
+          ))}
+        </div>
+        <div className="panel-footer">
+          <a href="https://github.com/fish-es/fish-short-drama-platform/commits/dev" target="_blank" rel="noopener noreferrer">查看全部 →</a>
         </div>
       </div>
 

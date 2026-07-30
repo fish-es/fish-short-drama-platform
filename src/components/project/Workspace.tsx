@@ -65,6 +65,7 @@ export default function Workspace() {
             <span className={`badge ${currentProject.projectType === 'video' ? 'badge-blue' : 'badge-gray'}`}>
               {currentProject.projectType === 'video' ? '长视频' : '短剧'}
             </span>
+            <button className="btn-commit" onClick={() => alert('请返回首页查看提交记录')}><span className="commit-dot"></span>提交记录</button>
           </div>
         </div>
 
