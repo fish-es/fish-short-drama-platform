@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { projectApi, setApiKey, logout } from '@/services/api.client'
+import { projectApi, setApiKey, setApiKeys, getApiKeys, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
 import { getDeployEnv } from '@/services/deploy-env'
@@ -50,6 +50,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     { hash: '5a8f3d6', author: 'fish-es', message: 'fix: 封面图保护链接鉴权修复', time: '2026/7/21' },
     { hash: '1c6b9e0', author: 'fish-es', message: 'chore: 升级 Next.js 16 适配', time: '2026/7/20' },
   ])
+  const [stats, setStats] = useState<any>(null)
   const [contributors, setContributors] = useState([
     { name: 'fish-es', commits: 19 },
     { name: 'chenzh659', commits: 9 },
@@ -59,7 +60,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   ])
 
   useEffect(() => {
-    setApiKeyState(localStorage.getItem('agnes_api_key') || '')
+    setApiKeyState(getApiKeys().join('\n'))
     if (loggedIn) {
       projectApi.list().then(setProjects).catch(() => {})
     }
@@ -68,6 +69,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     fetch('/api/changelog').then(r => r.json()).then(setChangelog).catch(() => {})
     fetch('/commits.json').then(r => r.ok ? r.json() : null).then(d => d && setCommits(d)).catch(() => {})
     fetch('/contributors.json').then(r => r.ok ? r.json() : null).then(d => d && setContributors(d)).catch(() => {})
+    fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loggedIn])
 
@@ -81,14 +83,26 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     } else { setIsAdmin(false) }
   }, [apiKey])
 
-  const handleSaveKey = () => { setApiKey(apiKey); setShowKeyModal(false); projectApi.list().then(setProjects).catch(() => {}) }
+  const handleSaveKey = () => {
+    const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
+    setApiKeys(keys)
+    setShowKeyModal(false)
+    projectApi.list().then(setProjects).catch(() => {})
+  }
   const [checkingKey, setCheckingKey] = useState(false)
   const handleCheckKey = async () => {
-    if (!apiKey) { alert('请先填写 API Key'); return }
+    const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
+    if (keys.length === 0) { alert('请先填写 API Key'); return }
+    setCheckingKey(true)
     try {
-      const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }) })
-      if (res.ok) { alert('API Key 有效') } else { alert(`API Key 无效 (${res.status})`) }
-    } catch (e: any) { alert('检查失败: ' + e.message) }
+      const results = await Promise.all(keys.map(async (k, i) => {
+        try {
+          const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }) })
+          return `Key ${i + 1}: ${res.ok ? '有效' : `无效 (${res.status})`}`
+        } catch (e: any) { return `Key ${i + 1}: 检查失败 (${e.message})` }
+      }))
+      alert(results.join('\n'))
+    } finally { setCheckingKey(false) }
   }
   const handleCreate = async () => {
     if (!newName.trim()) return
@@ -311,6 +325,48 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             </div>
           )}
 
+          {/* 平台统计 */}
+          {stats && (
+            <div className="info-card" style={{ marginTop: 22 }}>
+              <h4>平台数据</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
+                {[
+                  { label: '项目', v: stats.projects, color: '#818cf8' },
+                  { label: '剧本', v: stats.scripts, color: '#34d399' },
+                  { label: '图片', v: stats.images, color: '#fbbf24' },
+                  { label: '视频', v: stats.videos, color: '#f472b6' },
+                ].map(item => (
+                  <div key={item.label} style={{ textAlign: 'center', padding: '12px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ fontSize: 22, fontWeight: 700, color: item.color }}>{item.v.total}</div>
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary, #9ca3af)', marginTop: 2 }}>{item.label}总数</div>
+                    <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>今日 +{item.v.today}</div>
+                  </div>
+                ))}
+              </div>
+              {/* 今日产出对比条 */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {(() => {
+                  const items = [
+                    { label: '剧本', v: stats.scripts.today, color: '#34d399' },
+                    { label: '图片', v: stats.images.today, color: '#fbbf24' },
+                    { label: '视频', v: stats.videos.today, color: '#f472b6' },
+                  ]
+                  const max = Math.max(1, ...items.map(i => i.v))
+                  return items.map(item => (
+                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary, #9ca3af)', width: 32 }}>{item.label}</span>
+                      <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
+                        <div style={{ width: `${(item.v / max) * 100}%`, height: '100%', background: item.color, borderRadius: 4, transition: 'width 0.3s' }} />
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--color-text, #e5e7eb)', width: 28, textAlign: 'right' }}>{item.v}</span>
+                    </div>
+                  ))
+                })()}
+              </div>
+              <p style={{ fontSize: 10, color: 'var(--color-text-tertiary, #6b7280)', marginTop: 10, textAlign: 'center' }}>今日数据按 UTC 时间统计</p>
+            </div>
+          )}
+
           {/* HOME BOTTOM (V5: 2栏) */}
           <div className="home-bottom" style={{ marginTop: 22 }}>
             {/* 贡献排行 */}
@@ -434,11 +490,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <h3>API Key 配置</h3>
             <p>输入你的 API Key 以启用 AI 生成功能。Key 将安全保存在本地浏览器中。</p>
             <div className="field" style={{ marginBottom: 16 }}>
-              <label>API Key</label>
-              <input className="input-field" type="password" value={apiKey} onChange={e => setApiKeyState(e.target.value)} placeholder="sk-..." />
+              <label>API Key（每行一个，多个 Key 会并行加速生成）</label>
+              <textarea className="input-field" rows={4} value={apiKey} onChange={e => setApiKeyState(e.target.value)} placeholder="sk-...&#10;sk-...（第二个 Key，可选）" style={{ resize: 'vertical', fontFamily: 'monospace' }} />
             </div>
             <div className="modal-footer">
-              <button className="btn-outline" onClick={handleCheckKey}>检查可用性</button>
+              <button className="btn-outline" onClick={handleCheckKey} disabled={checkingKey}>{checkingKey ? '检查中...' : '检查可用性'}</button>
               <button className="btn-outline" onClick={() => setShowKeyModal(false)}>取消</button>
               <button className="btn-accent" onClick={handleSaveKey}>保存</button>
             </div>

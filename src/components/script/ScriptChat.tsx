@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAppStore } from '@/store'
-import { scriptApi } from '@/services/api.client'
+import { scriptApi, getApiKeys } from '@/services/api.client'
 import { generateOutline, parseOutlineResponse, ParsedOutline } from '@/services/script.client'
 import { generateImage } from '@/services/agnes.client'
 
@@ -53,19 +53,34 @@ export default function ScriptChat() {
       const updateImage = (type: string, name: string, imageUrl: string) =>
         fetch('/api/asset/image', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ projectId: currentProject.id, type, name, imageUrl }) })
 
-      setProgressMsg('正在生成封面...')
-      try { const coverUrl = await generateImage(`${parsed.title}，短剧封面海报，电影感`, coverSize, apiKey); await updateImage('cover', '', coverUrl) } catch {}
+      // Build a flat task list: cover + characters + locations (all independent)
+      type ImgTask = { type: string; name: string; prompt: string; size: string }
+      const tasks: ImgTask[] = [
+        { type: 'cover', name: '', prompt: `${parsed.title}，短剧封面海报，电影感`, size: coverSize },
+        ...parsed.characters.map(c => ({ type: 'character', name: c.name, prompt: `${c.keywords}，面朝镜头，半身像，中性背景`, size: '768x1024' })),
+        ...parsed.locations.map(l => ({ type: 'location', name: l.name, prompt: `${l.keywords}，广角镜头，电影感，无人物`, size: '1024x768' })),
+      ]
 
-      for (let i = 0; i < parsed.characters.length; i++) {
-        const char = parsed.characters[i]
-        setProgressMsg(`正在生成角色图 (${i + 1}/${parsed.characters.length})...`)
-        try { const url = await generateImage(`${char.keywords}，面朝镜头，半身像，中性背景`, '768x1024', apiKey); await updateImage('character', char.name, url) } catch {}
+      // Dispatch across all keys in parallel
+      const keys = getApiKeys()
+      const pool = keys.length > 0 ? keys : [apiKey]
+      let nextIdx = 0
+      let doneCount = 0
+      const total = tasks.length
+      const imgWorker = async (key: string) => {
+        while (true) {
+          const idx = nextIdx++
+          if (idx >= tasks.length) return
+          const t = tasks[idx]
+          try {
+            const url = await generateImage(t.prompt, t.size, key)
+            await updateImage(t.type, t.name, url)
+          } catch {}
+          doneCount++
+          setProgressMsg(`正在生成参考图 (${doneCount}/${total})...`)
+        }
       }
-      for (let i = 0; i < parsed.locations.length; i++) {
-        const loc = parsed.locations[i]
-        setProgressMsg(`正在生成场景图 (${i + 1}/${parsed.locations.length})...`)
-        try { const url = await generateImage(`${loc.keywords}，广角镜头，电影感，无人物`, '1024x768', apiKey); await updateImage('location', loc.name, url) } catch {}
-      }
+      await Promise.all(pool.map(k => imgWorker(k)))
       addMessage({ role: 'assistant', content: '所有参考图生成完成！' })
       setPrompt('')
     } catch (e: any) {
