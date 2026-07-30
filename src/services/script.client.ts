@@ -63,8 +63,9 @@ const EPISODE_SYSTEM_PROMPT = `你是一个专业的短剧编剧AI助手。根�
 {
   "scenes": [
     {
-      "description": "画面描述（中文，详细描述画面内容）",
-      "dialogue": "这个场景角色说的台词（纯台词内容，不要带角色名前缀）",
+      "description": "画面描述（中文，详细描述画面内容，包括镜头景别）",
+      "speaker": "本场景说话的角色名（必须是出场角色之一；如果本场景无人说话，填空字符串）",
+      "dialogue": "这个场景说话角色的台词（纯台词内容，不要带角色名前缀）",
       "characters": ["出场角色名"],
       "location": "地点名",
       "duration": 5
@@ -77,6 +78,9 @@ const EPISODE_SYSTEM_PROMPT = `你是一个专业的短剧编剧AI助手。根�
 - 场景数量5-10个
 - 每个场景3-8秒，总时长控制在30-60秒
 - description 详细描述角色动作、表情、环境、镜头角度
+- speaker 必须准确填写本场景开口说话的角色名，且必须是 characters 中的角色之一
+- 一个场景只让一个角色说话，保证口型和台词对得上
+- 有对白的场景，尽量用该角色的单人镜头或让说话者处于画面中心
 - dialogue 是纯台词，禁止写成"角色名：台词"格式
 - 剧情紧凑，节奏快，结尾留悬念
 - 只输出JSON，不要输出其他内容`
@@ -143,8 +147,15 @@ export function parseEpisodeScenesResponse(content: string): { scenes: any[] } {
     scene.duration = scene.duration || 5
     scene.characters = scene.characters || []
     scene.location = scene.location || ''
-    scene.dialogue = scene.dialogue || ''
     scene.description = scene.description || ''
+    const rawDialogue = (scene.dialogue || '').trim()
+    const speaker = (scene.speaker || '').trim()
+    // Persist speaker as a prefix ("角色名：台词") so video generation knows who speaks
+    if (rawDialogue && speaker && !/^[一-龥\w]+[：:]/.test(rawDialogue)) {
+      scene.dialogue = `${speaker}：${rawDialogue}`
+    } else {
+      scene.dialogue = rawDialogue
+    }
   }
   return { scenes: parsed.scenes }
 }

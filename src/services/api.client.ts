@@ -5,8 +5,25 @@ function getApiKey(): string {
   return localStorage.getItem('agnes_api_key') || ''
 }
 
+// Returns all configured keys (for parallel generation). Primary key first.
+export function getApiKeys(): string[] {
+  if (typeof window === 'undefined') return []
+  const multi = localStorage.getItem('agnes_api_keys') || ''
+  const keys = multi.split('\n').map(k => k.trim()).filter(Boolean)
+  if (keys.length > 0) return keys
+  const single = localStorage.getItem('agnes_api_key') || ''
+  return single ? [single] : []
+}
+
 export function setApiKey(key: string) {
   localStorage.setItem('agnes_api_key', key)
+}
+
+// Save multiple keys. First key becomes the primary (used for all /api/* auth).
+export function setApiKeys(keys: string[]) {
+  const cleaned = keys.map(k => k.trim()).filter(Boolean)
+  localStorage.setItem('agnes_api_keys', cleaned.join('\n'))
+  localStorage.setItem('agnes_api_key', cleaned[0] || '')
 }
 
 export function hasApiKey(): boolean {
