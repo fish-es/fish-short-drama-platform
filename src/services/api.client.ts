@@ -13,6 +13,34 @@ export function hasApiKey(): boolean {
   return !!getApiKey()
 }
 
+// ── Auth session ─────────────────────────────────────────────────────────────
+
+export function getSessionToken(): string {
+  if (typeof window === 'undefined') return ''
+  return localStorage.getItem('auth_session_token') || ''
+}
+
+export function setSessionToken(token: string) {
+  localStorage.setItem('auth_session_token', token)
+}
+
+export function hasSession(): boolean {
+  return !!getSessionToken()
+}
+
+export async function logout(): Promise<void> {
+  const token = getSessionToken()
+  if (token) {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      headers: { 'x-session-token': token },
+    }).catch(() => {/* best-effort */})
+  }
+  localStorage.removeItem('auth_session_token')
+}
+
+// ── Core fetch wrapper ────────────────────────────────────────────────────────
+
 async function api(url: string, options: RequestInit = {}): Promise<any> {
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

@@ -77,6 +77,59 @@ function runMigrations(db: Database): void {
       db.run("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'drama'")
     }
   }
+
+  // Auth tables (added in login feature)
+  const usersTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+  if (!usersTable.length || !usersTable[0].values.length) {
+    db.run(`CREATE TABLE users (
+      id TEXT PRIMARY KEY,
+      username TEXT NOT NULL UNIQUE,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`)
+  }
+
+  const sessionsTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='sessions'")
+  if (!sessionsTable.length || !sessionsTable[0].values.length) {
+    db.run(`CREATE TABLE sessions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL
+    )`)
+  }
+
+  // Clean up any old tables from previous failed migrations
+  db.run("DROP TABLE IF EXISTS users_old")
+  db.run("DROP TABLE IF EXISTS sessions_old")
+  db.run("DROP TABLE IF EXISTS password_resets_old")
+
+  // Drop and recreate auth tables if schema doesn't match expected columns
+  function ensureSchema(name: string, sql: string, expected: string[]): void {
+    const info = db.exec(`PRAGMA table_info(${name})`)
+    if (info.length) {
+      const existing = info[0].values.map((r: any) => r[1])
+      if (existing.length === expected.length && expected.every(c => existing.includes(c))) return
+    }
+    db.run(`DROP TABLE IF EXISTS ${name}`)
+    db.run(sql)
+  }
+  ensureSchema('users', "CREATE TABLE users (id TEXT PRIMARY KEY, username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')))", ['id', 'username', 'password_hash', 'created_at'])
+  ensureSchema('sessions', "CREATE TABLE sessions (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL)", ['id', 'user_id', 'token', 'created_at', 'expires_at'])
+  ensureSchema('password_resets', "CREATE TABLE password_resets (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, token TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL DEFAULT (datetime('now')), expires_at TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0)", ['id', 'user_id', 'token', 'created_at', 'expires_at', 'used'])
+
+  const resetsTable = db.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='password_resets'")
+  if (!resetsTable.length || !resetsTable[0].values.length) {
+    db.run(`CREATE TABLE password_resets (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0
+    )`)
+  }
 }
 
 export function saveDatabase(): void {
@@ -197,5 +250,29 @@ CREATE TABLE IF NOT EXISTS changelog (
   id TEXT PRIMARY KEY,
   content TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  expires_at TEXT NOT NULL,
+  used INTEGER NOT NULL DEFAULT 0
 );
 `

@@ -45,6 +45,9 @@ interface AppStore {
   currentEpisodeId: string | null
   // Scenes
   scenes: Scene[]
+  // Video URL cache (populated by SceneList, consumed by PipelineControl)
+  videoUrls: Record<string, string>
+  setVideoUrl: (sceneId: string, url: string) => void
   // Chat
   messages: Array<{ role: string; content: string }>
   loading: boolean
@@ -83,6 +86,10 @@ export const useAppStore = create<AppStore>((set) => ({
   scriptId: null,
   currentEpisodeId: null,
   scenes: [],
+  videoUrls: {},
+  setVideoUrl: (sceneId, url) => set(state => ({
+    videoUrls: { ...state.videoUrls, [sceneId]: url }
+  })),
   messages: [],
   loading: false,
   progressMsg: '',
