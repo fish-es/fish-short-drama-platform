@@ -60,13 +60,16 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
 
   useEffect(() => {
     setApiKeyState(localStorage.getItem('agnes_api_key') || '')
-    projectApi.list().then(setProjects).catch(() => {})
+    if (loggedIn) {
+      projectApi.list().then(setProjects).catch(() => {})
+    }
     fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
     fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
     fetch('/api/changelog').then(r => r.json()).then(setChangelog).catch(() => {})
     fetch('/commits.json').then(r => r.ok ? r.json() : null).then(d => d && setCommits(d)).catch(() => {})
     fetch('/contributors.json').then(r => r.ok ? r.json() : null).then(d => d && setContributors(d)).catch(() => {})
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn])
 
   useEffect(() => {
     const key = localStorage.getItem('agnes_api_key') || ''
@@ -127,6 +130,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   }
   const handleDeleteChangelog = async (id: string) => { try { await fetch('/api/changelog', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id }) }); setChangelog(changelog.filter(c => c.id !== id)) } catch { } }
 
+  const handleLogout = async () => {
+    await logout()
+    window.location.reload()
+  }
+
   const filtered = projectTab === 'mine' ? projects.filter(p => p.isOwner !== false) : projects.filter(p => p.isPublic)
 
   return (
@@ -145,6 +153,9 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         <div className="sidebar-bottom">
           <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
           <button onClick={() => setFeedbackGuide(!feedbackGuide)}><span className="icon">✉</span><span>反馈</span></button>
+          {loggedIn && (
+            <button onClick={handleLogout} style={{ color: 'var(--color-error)' }}><span className="icon">↩</span><span>退出登录</span></button>
+          )}
         </div>
       </nav>
 
@@ -160,7 +171,9 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
           <div className="topbar-right">
             <button className="btn-commit" onClick={() => setCommitPanelOpen(true)}><span className="commit-dot"></span>提交记录 ({commits.length})</button>
             <button className="btn-sm" onClick={() => setShowTutorialModal(true)}>◉ 使用教程</button>
-            <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
+            {loggedIn && (
+              <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
+            )}
             <button className="btn-sm" onClick={() => setFeedbackGuide(!feedbackGuide)}>✉ 反馈</button>
             {!loggedIn && onLoginRequired && (
               <button className="btn-login" onClick={onLoginRequired}>登录 / 注册</button>
@@ -176,63 +189,65 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <p>AI 驱动剧本创作 · 角色与场景 · 一键生成</p>
           </div>
 
-          {/* CREATE SECTION (V5: grid layout) */}
-          <div className="create-section animate-enter-up delay-050">
-            <h3>新建项目</h3>
-            <div className="create-form">
-              <div className="field">
-                <label>项目名称</label>
-                <input className="input-field" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} placeholder="例如：霸总替身复仇记" />
+          {/* CREATE SECTION (V5: grid layout) — 登录后显示 */}
+          {loggedIn && (
+            <div className="create-section animate-enter-up delay-050">
+              <h3>新建项目</h3>
+              <div className="create-form">
+                <div className="field">
+                  <label>项目名称</label>
+                  <input className="input-field" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} placeholder="例如：霸总替身复仇记" />
+                </div>
+                <div className="field">
+                  <label>类型</label>
+                  <select className="input-field" value={projectType} onChange={e => setProjectType(e.target.value as 'drama' | 'video')}>
+                    <option value="drama">短剧</option>
+                    <option value="video">长视频</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>画面比例</label>
+                  <select className="input-field" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}>
+                    <option value="9:16">9:16</option>
+                    <option value="16:9">16:9</option>
+                    <option value="1:1">1:1</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>集数</label>
+                  <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
+                    <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>模板</label>
+                  <select className="input-field" value={genre} onChange={e => setGenre(e.target.value)}>
+                    <option value="auto">自动识别</option><option value="">无模板</option>
+                    {projectType === 'drama' ? <>
+                      <option value="霸总">霸道总裁</option><option value="复仇">复仇逆袭</option><option value="修仙">修仙玄幻</option><option value="甜宠">甜宠恋爱</option><option value="悬疑">悬疑推理</option><option value="穿越">穿越重生</option><option value="都市">都市情感</option><option value="古装">古装权谋</option><option value="搞笑">搞笑喜剧</option><option value="虐恋">虐恋催泪</option><option value="职场">职场逆袭</option><option value="校园">校园青春</option><option value="豪门">豪门恩怨</option><option value="战神">战神归来</option><option value="赘婿">赘婿逆袭</option><option value="重生">重生复仇</option>
+                    </> : <>
+                      <option value="寓言">寓言故事</option><option value="广告">商业广告</option><option value="科普">科普知识</option><option value="纪录">纪录短片</option><option value="教程">教学教程</option><option value="动漫">动漫故事</option><option value="情感">情感故事</option><option value="搞笑">搞笑段子</option>
+                    </>}
+                  </select>
+                </div>
+                <button className="btn-accent" onClick={handleCreate} disabled={creating || !newName.trim()} style={{ height: 40 }}>{creating ? '...' : '创建项目'}</button>
               </div>
-              <div className="field">
-                <label>类型</label>
-                <select className="input-field" value={projectType} onChange={e => setProjectType(e.target.value as 'drama' | 'video')}>
-                  <option value="drama">短剧</option>
-                  <option value="video">长视频</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>画面比例</label>
-                <select className="input-field" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}>
-                  <option value="9:16">9:16</option>
-                  <option value="16:9">16:9</option>
-                  <option value="1:1">1:1</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>集数</label>
-                <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
-                  <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>模板</label>
-                <select className="input-field" value={genre} onChange={e => setGenre(e.target.value)}>
-                  <option value="auto">自动识别</option><option value="">无模板</option>
-                  {projectType === 'drama' ? <>
-                    <option value="霸总">霸道总裁</option><option value="复仇">复仇逆袭</option><option value="修仙">修仙玄幻</option><option value="甜宠">甜宠恋爱</option><option value="悬疑">悬疑推理</option><option value="穿越">穿越重生</option><option value="都市">都市情感</option><option value="古装">古装权谋</option><option value="搞笑">搞笑喜剧</option><option value="虐恋">虐恋催泪</option><option value="职场">职场逆袭</option><option value="校园">校园青春</option><option value="豪门">豪门恩怨</option><option value="战神">战神归来</option><option value="赘婿">赘婿逆袭</option><option value="重生">重生复仇</option>
-                  </> : <>
-                    <option value="寓言">寓言故事</option><option value="广告">商业广告</option><option value="科普">科普知识</option><option value="纪录">纪录短片</option><option value="教程">教学教程</option><option value="动漫">动漫故事</option><option value="情感">情感故事</option><option value="搞笑">搞笑段子</option>
-                  </>}
-                </select>
-              </div>
-              <button className="btn-accent" onClick={handleCreate} disabled={creating || !newName.trim()} style={{ height: 40 }}>{creating ? '...' : '创建项目'}</button>
+              {projectType === 'drama' && episodeCount === 'custom' && (
+                <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
+                  <label>自定义集数</label>
+                  <input className="input-field" type="number" min={3} max={100} value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)} placeholder="集" />
+                </div>
+              )}
+              {projectType === 'video' && (
+                <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
+                  <label>时长</label>
+                  <select className="input-field" value={videoDuration} onChange={e => setVideoDuration(e.target.value)}>
+                    <option value="30">30秒</option><option value="60">1分钟</option><option value="120">2分钟</option><option value="180">3分钟</option><option value="300">5分钟</option>
+                  </select>
+                </div>
+              )}
             </div>
-            {projectType === 'drama' && episodeCount === 'custom' && (
-              <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
-                <label>自定义集数</label>
-                <input className="input-field" type="number" min={3} max={100} value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)} placeholder="集" />
-              </div>
-            )}
-            {projectType === 'video' && (
-              <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
-                <label>时长</label>
-                <select className="input-field" value={videoDuration} onChange={e => setVideoDuration(e.target.value)}>
-                  <option value="30">30秒</option><option value="60">1分钟</option><option value="120">2分钟</option><option value="180">3分钟</option><option value="300">5分钟</option>
-                </select>
-              </div>
-            )}
-          </div>
+          )}
 
           {/* 反馈引导面板 */}
           {feedbackGuide && (
@@ -249,50 +264,52 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             </div>
           )}
 
-          {/* PROJECT LIST (V5: 下划线 tab) */}
-          <div className="animate-enter-up delay-100">
-            <div className="project-tabs">
-              <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
-              <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
-              <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
-            </div>
-
-            {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
-                {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : '暂无公开项目'}
+          {/* PROJECT LIST (V5: 下划线 tab) — 登录后显示 */}
+          {loggedIn && (
+            <div className="animate-enter-up delay-100">
+              <div className="project-tabs">
+                <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
+                <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
               </div>
-            ) : (
-              filtered.map(project => (
-                <div key={project.id} className="project-row" onClick={() => handleOpen(project)}>
-                  <div className="pr-left">
-                    {project.coverImage ? (
-                      <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
-                        <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" className="w-full h-full object-cover" />
+
+              {filtered.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+                  {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : '暂无公开项目'}
+                </div>
+              ) : (
+                filtered.map(project => (
+                  <div key={project.id} className="project-row" onClick={() => handleOpen(project)}>
+                    <div className="pr-left">
+                      {project.coverImage ? (
+                        <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
+                          <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-alt)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); handleRegenCover(project) }}>🎬</div>
+                      )}
+                      <span className="project-name">{project.dramaTitle || project.name}</span>
+                      <div className="project-meta">
+                        <span>{project.aspectRatio}</span>
+                        <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
+                        {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
                       </div>
-                    ) : (
-                      <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-alt)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); handleRegenCover(project) }}>🎬</div>
-                    )}
-                    <span className="project-name">{project.dramaTitle || project.name}</span>
-                    <div className="project-meta">
-                      <span>{project.aspectRatio}</span>
-                      <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
-                      {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
+                    </div>
+                    <div className="pr-right" onClick={e => e.stopPropagation()}>
+                      {project.isOwner !== false && (
+                        <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
+                      )}
+                      <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
+                      {project.isOwner !== false && (
+                        <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
+                      )}
                     </div>
                   </div>
-                  <div className="pr-right" onClick={e => e.stopPropagation()}>
-                    {project.isOwner !== false && (
-                      <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
-                    )}
-                    <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
-                    {project.isOwner !== false && (
-                      <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                ))
+              )}
+            </div>
+          )}
 
           {/* HOME BOTTOM (V5: 2栏) */}
           <div className="home-bottom" style={{ marginTop: 22 }}>
