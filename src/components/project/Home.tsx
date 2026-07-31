@@ -5,9 +5,10 @@ import { useAppStore } from '@/store'
 import { projectApi, setApiKey, setApiKeys, getApiKeys, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
+import { showAlert, showConfirm, showPrompt } from '@/components/common/Dialog'
 import { getDeployEnv } from '@/services/deploy-env'
 
-interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string }
+interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string; reply?: string | null; status?: string }
 
 interface HomeProps {
   loggedIn?: boolean
@@ -39,6 +40,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [projectTab, setProjectTab] = useState<'mine' | 'public' | 'recycle'>('mine')
   const [deletedProjects, setDeletedProjects] = useState<any[]>([])
   const [commitPanelOpen, setCommitPanelOpen] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
   const [commits, setCommits] = useState([
     { hash: '7945760', author: 'fish-es', message: 'Merge pull request #53 from shixigege/dev', time: '2026/7/26' },
     { hash: 'a3f2c81', author: 'fish-es', message: 'fix: 修复登录态持久化问题', time: '2026/7/25' },
@@ -62,9 +64,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
 
   useEffect(() => {
     setApiKeyState(getApiKeys().join('\n'))
-    if (loggedIn) {
-      projectApi.list().then(setProjects).catch(() => {})
-    }
+    setFeedbackNickname(localStorage.getItem('agnes_username') || '')
+    projectApi.list().then(setProjects).catch(() => {})
     fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
     fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
     fetch('/api/changelog').then(r => r.json()).then(setChangelog).catch(() => {})
@@ -76,13 +77,13 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
 
   useEffect(() => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (key && typeof crypto !== 'undefined' && crypto.subtle) {
+    if (loggedIn && key && typeof crypto !== 'undefined' && crypto.subtle) {
       crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
         .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16))
         .then(hash => setIsAdmin(hash === '90af35f948de349b'))
         .catch(() => {})
     } else { setIsAdmin(false) }
-  }, [apiKey])
+  }, [apiKey, loggedIn])
 
   const handleSaveKey = () => {
     const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
@@ -93,7 +94,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [checkingKey, setCheckingKey] = useState(false)
   const handleCheckKey = async () => {
     const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
-    if (keys.length === 0) { alert('请先填写 API Key'); return }
+    if (keys.length === 0) { showAlert('请先填写 API Key'); return }
     setCheckingKey(true)
     try {
       const results = await Promise.all(keys.map(async (k, i) => {
@@ -102,7 +103,7 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
           return `Key ${i + 1}: ${res.ok ? '有效' : `无效 (${res.status})`}`
         } catch (e: any) { return `Key ${i + 1}: 检查失败 (${e.message})` }
       }))
-      alert(results.join('\n'))
+      showAlert(results.join('\n'), 'Key 检查结果')
     } finally { setCheckingKey(false) }
   }
   const handleCreate = async () => {
@@ -110,30 +111,39 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     setCreating(true); setStoreGenre(genre)
     const epCount = episodeCount === 'custom' ? parseInt(customEpisodeCount) || 15 : parseInt(episodeCount)
     setStoreEpisodeCount(projectType === 'drama' ? epCount : 1)
-    try { const project = await projectApi.create(newName.trim(), aspectRatio, projectType); setProjects([project, ...projects]); setCurrentProject(project); setNewName('') }
-    catch (e: any) { alert(e.message) } finally { setCreating(false) }
+    const targetDuration = projectType === 'video' ? parseInt(videoDuration) || 60 : 0
+    try { const project = await projectApi.create(newName.trim(), aspectRatio, projectType, targetDuration); setProjects([project, ...projects]); setCurrentProject(project); setNewName('') }
+    catch (e: any) { showAlert(e.message) } finally { setCreating(false) }
   }
   const handleOpen = async (project: any) => {
     setCurrentProject(project)
     try { const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }); const data = await res.json(); if (data?.episodes?.length) setEpisodes(data.episodes, data.scriptId) } catch { }
   }
   const handleDelete = async (id: string) => {
-    if (!confirm('确定要将该项目移入回收站吗？30 天后将自动清理')) return
+    if (!(await showConfirm('确定要将该项目移入回收站吗？30 天后将自动清理', { danger: true, confirmText: '移入回收站' }))) return
     await projectApi.delete(id)
     setProjects(projects.filter(p => p.id !== id))
     projectApi.listDeleted().then(setDeletedProjects).catch(() => {})
   }
   const handleRegenCover = async (project: any) => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (!key) { alert('请先设置 API Key'); return }
+    if (!key) { showAlert('请先设置 API Key'); return }
     const title = project.dramaTitle || project.name; const ar = project.aspectRatio || '16:9'
     const coverSize = ar === '9:16' ? '768x1024' : ar === '1:1' ? '1024x1024' : '1024x768'
     try { const url = await generateImage(`${title}，短剧封面海报，电影感`, coverSize, key); await fetch('/api/asset/image', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, body: JSON.stringify({ projectId: project.id, type: 'cover', name: '', imageUrl: url }) }); setProjects(projects.map(p => p.id === project.id ? { ...p, coverImage: url } : p)) }
-    catch (e: any) { alert('封面生成失败: ' + e.message) }
+    catch (e: any) { showAlert('封面生成失败: ' + e.message) }
   }
   const handleTogglePublic = async (project: any) => {
     const newPublic = !project.isPublic
     try { await fetch('/api/project', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' }, body: JSON.stringify({ id: project.id, isPublic: newPublic }) }); setProjects(projects.map(p => p.id === project.id ? { ...p, isPublic: newPublic } : p)) } catch { }
+  }
+  const handleRename = async (project: any) => {
+    const name = await showPrompt('输入新的剧名：', { title: '重命名', defaultValue: project.dramaTitle || project.name })
+    if (!name || !name.trim()) return
+    try {
+      await projectApi.rename(project.id, name.trim())
+      setProjects(projects.map(p => p.id === project.id ? { ...p, dramaTitle: name.trim() } : p))
+    } catch (e: any) { showAlert('重命名失败: ' + e.message) }
   }
   const handleDownloadCover = async (project: any) => {
     if (!project.coverImage) return
@@ -143,6 +153,22 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const handleSubmitFeedback = async () => {
     if (!feedbackContent.trim()) return; setSubmitting(true)
     try { const res = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ content: feedbackContent, nickname: feedbackNickname }) }); const data = await res.json(); if (res.ok) { setFeedbackList([data, ...feedbackList]); setFeedbackContent('') } } catch { } setSubmitting(false)
+  }
+  const reloadFeedback = () => fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
+  const handleFbReply = async (id: string) => {
+    const reply = await showPrompt('输入回复内容：', { title: '回复反馈' })
+    if (reply === null) return
+    await fetch('/api/feedback', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id, reply }) })
+    reloadFeedback()
+  }
+  const handleFbToggle = async (id: string, current: string) => {
+    await fetch('/api/feedback', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id, status: current === 'done' ? 'open' : 'done' }) })
+    reloadFeedback()
+  }
+  const handleFbDelete = async (id: string) => {
+    if (!(await showConfirm('确定删除这条反馈吗？', { danger: true, confirmText: '删除' }))) return
+    await fetch('/api/feedback', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id }) })
+    reloadFeedback()
   }
   const handleSubmitChangelog = async () => {
     if (!changelogContent.trim()) return
@@ -164,11 +190,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
       await projectApi.restore(id)
       setDeletedProjects(deletedProjects.filter(p => p.id !== id))
       projectApi.list().then(setProjects).catch(() => {})
-    } catch (e: any) { alert('还原失败: ' + e.message) }
+    } catch (e: any) { showAlert('还原失败: ' + e.message) }
   }
   const handlePermanentDelete = async (id: string) => {
-    if (!confirm('彻底删除后将无法恢复，确定吗？')) return
-    try { await projectApi.delete(id, true); setDeletedProjects(deletedProjects.filter(p => p.id !== id)) } catch (e: any) { alert('删除失败: ' + e.message) }
+    if (!(await showConfirm('彻底删除后将无法恢复，确定吗？', { danger: true, confirmText: '彻底删除' }))) return
+    try { await projectApi.delete(id, true); setDeletedProjects(deletedProjects.filter(p => p.id !== id)) } catch (e: any) { showAlert('删除失败: ' + e.message) }
   }
 
   return (
@@ -181,15 +207,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         </div>
         <div className="sidebar-nav">
           <button className="active"><span className="icon">▶</span><span>项目</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
-        </div>
-        <div className="sidebar-bottom">
-          <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
-          <button onClick={() => setFeedbackGuide(!feedbackGuide)}><span className="icon">✉</span><span>反馈</span></button>
-          {loggedIn && (
-            <button onClick={handleLogout} style={{ color: 'var(--color-error)' }}><span className="icon">↩</span><span>退出登录</span></button>
-          )}
+          <button onClick={() => showAlert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
+          <button onClick={() => showAlert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
         </div>
       </nav>
 
@@ -211,6 +230,9 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <button className="btn-sm" onClick={() => setFeedbackGuide(!feedbackGuide)}>✉ 反馈</button>
             {!loggedIn && onLoginRequired && (
               <button className="btn-login" onClick={onLoginRequired}>登录 / 注册</button>
+            )}
+            {loggedIn && (
+              <button className="btn-sm" onClick={() => setShowLogoutConfirm(true)} style={{ color: 'var(--color-error)' }}>↩ 退出登录</button>
             )}
           </div>
         </div>
@@ -247,12 +269,14 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                     <option value="1:1">1:1</option>
                   </select>
                 </div>
-                <div className="field">
-                  <label>集数</label>
-                  <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
-                    <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
-                  </select>
-                </div>
+                {projectType === 'drama' && (
+                  <div className="field">
+                    <label>集数</label>
+                    <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
+                      <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
+                    </select>
+                  </div>
+                )}
                 <div className="field">
                   <label>模板</label>
                   <select className="input-field" value={genre} onChange={e => setGenre(e.target.value)}>
@@ -283,33 +307,25 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             </div>
           )}
 
-          {/* 反馈引导面板 */}
-          {feedbackGuide && (
-            <div className="info-card" style={{ marginBottom: 24, padding: '18px 22px' }}>
-              <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text)' }}>📮 如何反馈</h4>
-              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.8 }}>
-                <p><strong>方式一：</strong>在下方「问题与建议」表单直接提交，所有用户可见。</p>
-                <p style={{ marginTop: 4 }}>
-                  <strong>方式二：</strong>
-                  访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>GitHub Issues 页面</a> 提交 Issue，适合复杂 bug 或功能需求。
-                </p>
-              </div>
-              <button onClick={() => setFeedbackGuide(false)} className="btn-ghost-sm" style={{ marginTop: 8, color: 'var(--color-text-tertiary)' }}>收起 ↑</button>
-            </div>
-          )}
 
           {/* PROJECT LIST (V5: 下划线 tab) — 登录后显示 */}
-          {loggedIn && (
+          {(
             <div className="animate-enter-up delay-100">
               <div className="project-tabs">
                 <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
                 <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
-                <button className={`project-tab ${projectTab === 'recycle' ? 'active' : ''}`} onClick={() => { setProjectTab('recycle'); projectApi.listDeleted().then(setDeletedProjects).catch(() => {}) }}>回收站</button>
+                {loggedIn && <button className={`project-tab ${projectTab === 'recycle' ? 'active' : ''}`} onClick={() => { setProjectTab('recycle'); projectApi.listDeleted().then(setDeletedProjects).catch(() => {}) }}>回收站</button>}
                 <div style={{ flex: 1 }} />
                 <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
               </div>
 
-              {filtered.length === 0 ? (
+              <div style={{ minHeight: '58vh' }}>
+              {(!loggedIn && (projectTab === 'mine' || projectTab === 'recycle')) ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+                  请先登录后查看{projectTab === 'mine' ? '我的项目' : '回收站'}
+                  {onLoginRequired && <div style={{ marginTop: 12 }}><button className="btn-accent-sm" onClick={onLoginRequired}>登录 / 注册</button></div>}
+                </div>
+              ) : filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
                   {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : projectTab === 'public' ? '暂无公开项目' : '回收站是空的'}
                 </div>
@@ -354,6 +370,9 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                       ) : (
                         <>
                           {project.isOwner !== false && (
+                            <button className="btn-ghost-sm" onClick={(e) => { e.stopPropagation(); handleRename(project) }}>重命名</button>
+                          )}
+                          {project.isOwner !== false && (
                             <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
                           )}
                           <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
@@ -367,53 +386,38 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                   )
                 })
               )}
+              </div>
             </div>
           )}
 
-          {/* 平台统计 */}
-          {stats && (
-            <div className="info-card" style={{ marginTop: 22 }}>
-              <h4>平台数据</h4>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 16 }}>
-                {[
-                  { label: '项目', v: stats.projects, color: '#818cf8' },
-                  { label: '剧本', v: stats.scripts, color: '#34d399' },
-                  { label: '图片', v: stats.images, color: '#fbbf24' },
-                  { label: '视频', v: stats.videos, color: '#f472b6' },
-                ].map(item => (
-                  <div key={item.label} style={{ textAlign: 'center', padding: '12px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: item.color }}>{item.v.total}</div>
-                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary, #9ca3af)', marginTop: 2 }}>{item.label}总数</div>
-                    <div style={{ fontSize: 11, color: '#10b981', marginTop: 4 }}>今日 +{item.v.today}</div>
-                  </div>
-                ))}
-              </div>
-              {/* 今日产出对比条 */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {(() => {
-                  const items = [
-                    { label: '剧本', v: stats.scripts.today, color: '#34d399' },
-                    { label: '图片', v: stats.images.today, color: '#fbbf24' },
-                    { label: '视频', v: stats.videos.today, color: '#f472b6' },
-                  ]
-                  const max = Math.max(1, ...items.map(i => i.v))
-                  return items.map(item => (
-                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <span style={{ fontSize: 11, color: 'var(--color-text-tertiary, #9ca3af)', width: 32 }}>{item.label}</span>
-                      <div style={{ flex: 1, height: 8, background: 'rgba(255,255,255,0.05)', borderRadius: 4, overflow: 'hidden' }}>
-                        <div style={{ width: `${(item.v / max) * 100}%`, height: '100%', background: item.color, borderRadius: 4, transition: 'width 0.3s' }} />
-                      </div>
-                      <span style={{ fontSize: 11, color: 'var(--color-text, #e5e7eb)', width: 28, textAlign: 'right' }}>{item.v}</span>
-                    </div>
-                  ))
-                })()}
-              </div>
-              <p style={{ fontSize: 10, color: 'var(--color-text-tertiary, #6b7280)', marginTop: 10, textAlign: 'center' }}>今日数据按 UTC 时间统计</p>
-            </div>
-          )}
-
-          {/* HOME BOTTOM (V5: 2栏) */}
+          {/* HOME BOTTOM (V5: 4栏 — 平台数据 / 贡献排行 / 更新日志 / 问题与建议) */}
           <div className="home-bottom" style={{ marginTop: 22 }}>
+            {/* 平台数据 */}
+            <div className="info-card">
+              <h4>平台数据</h4>
+              {stats ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: '项目', v: stats.projects, color: '#818cf8' },
+                    { label: '剧本', v: stats.scripts, color: '#34d399' },
+                    { label: '图片', v: stats.images, color: '#fbbf24' },
+                    { label: '视频', v: stats.videos, color: '#f472b6' },
+                  ].map(item => (
+                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-secondary, #9ca3af)' }}>{item.label}</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: item.color }}>{item.v.total}</span>
+                        <span style={{ fontSize: 11, color: '#10b981', marginLeft: 6 }}>今日+{item.v.today}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 10, color: 'var(--color-text-tertiary, #6b7280)', marginTop: 4, textAlign: 'center' }}>今日按 UTC 统计</p>
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary, #6b7280)' }}>加载中...</p>
+              )}
+            </div>
+
             {/* 贡献排行 */}
             <div className="info-card">
               <h4>贡献排行</h4>
@@ -467,11 +471,25 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                 <button className="btn-accent" style={{ fontSize: 11 }} onClick={handleSubmitFeedback} disabled={submitting || !feedbackContent.trim()}>{submitting ? '..' : '提交'}</button>
               </div>
               {feedbackList.length > 0 ? feedbackList.map(item => (
-                <div key={item.id} className="fb-item">
-                  <span className="fb-status open">处理中</span>
-                  <span style={{ fontWeight: 600, color: 'var(--color-text)', minWidth: 40 }}>{item.nickname || '匿名'}</span>
-                  <span>{item.content}</span>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
+                <div key={item.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <span className={`fb-status ${item.status === 'done' ? 'done' : 'open'}`}>{item.status === 'done' ? '已完成' : '处理中'}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{item.nickname || '匿名'}</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text)', marginTop: 3 }}>{item.content}</div>
+                  {item.reply && (
+                    <div style={{ fontSize: 11, color: 'var(--color-accent)', marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--color-accent)' }}>
+                      官方回复：{item.reply}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 5 }}>
+                      <button onClick={() => handleFbReply(item.id)} style={{ fontSize: 10, color: 'var(--color-accent)' }}>回复</button>
+                      <button onClick={() => handleFbToggle(item.id, item.status || 'open')} style={{ fontSize: 10, color: 'var(--color-success)' }}>{item.status === 'done' ? '标记未完成' : '标记已完成'}</button>
+                      <button onClick={() => handleFbDelete(item.id)} style={{ fontSize: 10, color: 'var(--color-error)' }}>删除</button>
+                    </div>
+                  )}
                 </div>
               )) : <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>暂无反馈</div>}
             </div>
@@ -480,30 +498,61 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
       </div>
 
       {/* ===== SLIDE-OUT COMMIT PANEL ===== */}
-      <div className={`panel-overlay ${commitPanelOpen ? 'open' : ''}`} onClick={() => setCommitPanelOpen(false)} />
-      <div className={`commit-panel ${commitPanelOpen ? 'open' : ''}`}>
-        <div className="panel-header">
-          <div>
-            <h3>最近提交记录<span className="panel-count">({commits.length})</span></h3>
-          </div>
-          <button className="panel-close" onClick={() => setCommitPanelOpen(false)}>✕</button>
-        </div>
-        <div className="panel-body">
-          {commits.map(c => (
-            <div key={c.hash} className="commit-item">
-              <div className="commit-item-top">
-                <span className="commit-hash">{c.hash}</span>
-                <span className="commit-time">{c.time}</span>
-              </div>
-              <div className="commit-author">{c.author}</div>
-              <div className="commit-msg">{c.message}</div>
+      {/* ===== 提交记录 MODAL ===== */}
+      {commitPanelOpen && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setCommitPanelOpen(false) }}>
+          <div className="modal">
+            <h3>最近提交记录 ({commits.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20, maxHeight: '50vh', overflowY: 'auto' }}>
+              {commits.map(c => (
+                <div key={c.hash} style={{ padding: '10px 12px', background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: 'var(--color-accent)', fontFamily: 'monospace' }}>{c.hash}</span>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>{c.time}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{c.author}</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{c.message}</div>
+                </div>
+              ))}
             </div>
-          ))}
+            <div className="modal-footer">
+              <a href="https://github.com/fish-es/fish-short-drama-platform/commits/dev" target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ textDecoration: 'none' }}>查看全部 →</a>
+              <button className="btn-outline" onClick={() => setCommitPanelOpen(false)}>关闭</button>
+            </div>
+          </div>
         </div>
-        <div className="panel-footer">
-          <a href="https://github.com/fish-es/fish-short-drama-platform/commits/dev" target="_blank" rel="noopener noreferrer">查看全部 →</a>
+      )}
+
+      {/* ===== 反馈 MODAL ===== */}
+      {feedbackGuide && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setFeedbackGuide(false) }}>
+          <div className="modal">
+            <h3>如何反馈</h3>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.9, marginBottom: 20 }}>
+              <p><strong style={{ color: 'var(--color-text)' }}>方式一：</strong>在首页「问题与建议」表单直接提交，所有用户可见。</p>
+              <p style={{ marginTop: 8 }}>
+                <strong style={{ color: 'var(--color-text)' }}>方式二：</strong>
+                访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>GitHub Issues 页面</a> 提交 Issue，适合复杂 bug 或功能需求。
+              </p>
+            </div>
+            <div className="modal-footer"><button className="btn-outline" onClick={() => setFeedbackGuide(false)}>关闭</button></div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* ===== 退出登录确认 MODAL ===== */}
+      {showLogoutConfirm && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowLogoutConfirm(false) }}>
+          <div className="modal">
+            <h3>退出登录</h3>
+            <p style={{ marginBottom: 20 }}>确定要退出登录吗？</p>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowLogoutConfirm(false)}>取消</button>
+              <button className="btn-accent" style={{ background: 'var(--color-error)' }} onClick={handleLogout}>确定退出</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== TUTORIAL MODAL ===== */}
       {showTutorialModal && (

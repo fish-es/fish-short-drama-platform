@@ -4,21 +4,23 @@ import { useState } from 'react'
 import { useAppStore } from '@/store'
 import { episodeApi } from '@/services/api.client'
 import { generateEpisodeScenes, parseEpisodeScenesResponse } from '@/services/script.client'
+import { showAlert } from '@/components/common/Dialog'
 
 export default function EpisodeList() {
-  const { currentProject, episodes, scriptId, currentEpisodeId, setCurrentEpisodeId, updateEpisode, setScenes, resetPipeline } = useAppStore()
+  const { currentProject, episodes, scriptId, currentEpisodeId, loading, setCurrentEpisodeId, updateEpisode, setScenes, resetPipeline } = useAppStore()
   const [generating, setGenerating] = useState<string | null>(null)
   const [generatingAll, setGeneratingAll] = useState(false)
 
   const handleGenerate = async (episodeId: string) => {
     if (!currentProject) return
+    if (loading) { showAlert('资产库（角色/场景参考图）还在生成中，请等待完成后再生成剧本'); return }
     setGenerating(episodeId)
     try {
       const apiKey = localStorage.getItem('agnes_api_key') || ''
       const ctx = await episodeApi.getContext(episodeId)
       let parsed: { scenes: any[] } | null = null
       for (let attempt = 0; attempt < 3; attempt++) {
-        const content = await generateEpisodeScenes(ctx.outlineContent, ctx.epNumber, ctx.previousSummary, apiKey)
+        const content = await generateEpisodeScenes(ctx.outlineContent, ctx.epNumber, ctx.previousSummary, apiKey, { projectType: currentProject.projectType, targetDuration: currentProject.targetDuration })
         try { parsed = parseEpisodeScenesResponse(content); break } catch { if (attempt >= 2) throw new Error(`第 ${ctx.epNumber} 集生成失败`) }
       }
       if (!parsed) throw new Error('生成失败')
@@ -27,7 +29,7 @@ export default function EpisodeList() {
       setCurrentEpisodeId(episodeId)
       setScenes(result.scenes)
       resetPipeline()
-    } catch (e: any) { alert(`生成失败: ${e.message}`) }
+    } catch (e: any) { showAlert(`生成失败: ${e.message}`) }
     finally { setGenerating(null) }
   }
 
@@ -40,6 +42,7 @@ export default function EpisodeList() {
 
   const handleGenerateAll = async () => {
     if (!currentProject) return
+    if (loading) { showAlert('资产库（角色/场景参考图）还在生成中，请等待完成后再生成剧本'); return }
     setGeneratingAll(true)
     for (const ep of episodes) {
       if (ep.status === 'pending') {
@@ -49,7 +52,7 @@ export default function EpisodeList() {
           const ctx = await episodeApi.getContext(ep.id)
           let parsed: { scenes: any[] } | null = null
           for (let attempt = 0; attempt < 3; attempt++) {
-            const content = await generateEpisodeScenes(ctx.outlineContent, ctx.epNumber, ctx.previousSummary, apiKey)
+            const content = await generateEpisodeScenes(ctx.outlineContent, ctx.epNumber, ctx.previousSummary, apiKey, { projectType: currentProject.projectType, targetDuration: currentProject.targetDuration })
             try { parsed = parseEpisodeScenesResponse(content); break } catch { if (attempt >= 2) break }
           }
           if (parsed) { await episodeApi.saveScenes(ep.id, ctx.scriptId, parsed.scenes); updateEpisode(ep.id, { status: 'generated' }) }
@@ -75,6 +78,28 @@ export default function EpisodeList() {
 
   const isOwner = currentProject?.isOwner !== false
   const generatedCount = episodes.filter(e => e.status === 'generated').length
+  const isVideo = currentProject?.projectType === 'video'
+
+  // 长视频只有一集，不显示分集时间线，只显示一个生成按钮
+  if (isVideo) {
+    const only = episodes[0]
+    const done = only?.status === 'generated'
+    return (
+      <div className="episode-timeline-bar">
+        <span className="timeline-label">分镜</span>
+        <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{done ? '已生成分镜' : '待生成分镜'}</span>
+        <div style={{ flex: 1 }} />
+        {isOwner && only && (
+          <button className="btn-accent-sm" style={{ fontSize: 11 }}
+            onClick={() => done ? handleView(only.id) : handleGenerate(only.id)}
+            disabled={generating === only.id || loading}
+            title={loading ? '资产库生成中，请稍候' : ''}>
+            {loading ? '资产库生成中...' : generating === only.id ? '生成中...' : done ? '查看分镜' : '生成分镜'}
+          </button>
+        )}
+      </div>
+    )
+  }
 
   return (
     <>
@@ -84,8 +109,9 @@ export default function EpisodeList() {
         <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>{episodes.length} 集 · {generatedCount} 已生成</span>
         <div style={{ flex: 1 }} />
         {isOwner && generatedCount < episodes.length && (
-          <button className="btn-accent-sm" style={{ fontSize: 11 }} onClick={handleGenerateAll} disabled={generatingAll}>
-            {generatingAll ? '生成中...' : '一键生成全部'}
+          <button className="btn-accent-sm" style={{ fontSize: 11 }} onClick={handleGenerateAll} disabled={generatingAll || loading}
+            title={loading ? '资产库生成中，请稍候' : ''}>
+            {loading ? '资产库生成中...' : generatingAll ? '生成中...' : '一键生成全部'}
           </button>
         )}
       </div>

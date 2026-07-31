@@ -22,7 +22,7 @@ export default function PipelineControl() {
 
   // Client-side merge state
   const [mergeStatus, setMergeStatus] = useState<'idle' | 'merging' | 'done' | 'error'>('idle')
-  const [mergeSubtitles, setMergeSubtitles] = useState(true)
+  const [mergeSubtitles] = useState(false)
   const [mergeProgressMsg, setMergeProgressMsg] = useState('')
 
   // Scene selection for merge
@@ -383,18 +383,6 @@ export default function PipelineControl() {
             ))}
           </div>
 
-          {/* Subtitle toggle */}
-          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={mergeSubtitles}
-              onChange={(e) => setMergeSubtitles(e.target.checked)}
-              disabled={mergeStatus === 'merging'}
-              className="w-4 h-4"
-            />
-            包含软字幕（MP4 内嵌）
-          </label>
-
           {/* Action buttons */}
           <div className="flex items-center gap-3 flex-wrap">
             {mergeStatus !== 'merging' && (
@@ -429,14 +417,6 @@ export default function PipelineControl() {
 
           {mergeStatus === 'error' && (
             <p className="text-sm text-red-400">{mergeProgressMsg}</p>
-          )}
-
-          {/* Soft subtitle notice */}
-          {mergeSubtitles && (
-            <p className="text-xs text-amber-400/70">
-              ⚠ 软字幕为 MP4 内嵌字幕轨道，浏览器的 &lt;video&gt; 标签不支持显示。
-              请使用 <strong>VLC</strong> / <strong>PotPlayer</strong> / <strong>IINA</strong> 等播放器打开下载的视频，即可在字幕菜单中开启中文字幕。
-            </p>
           )}
         </div>
       ) : null}

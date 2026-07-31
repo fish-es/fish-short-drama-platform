@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DialogHost } from "@/components/common/Dialog";
 
 export const metadata: Metadata = {
   title: "短剧开发平台",
@@ -13,7 +14,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
-      <body>{children}</body>
+      <body>{children}<DialogHost /></body>
     </html>
   );
 }

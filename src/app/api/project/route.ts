@@ -45,7 +45,9 @@ function cleanupRecycleBin(db: any): number {
 
 export async function GET(req: NextRequest) {
   try {
-    const { userId } = requireAuth(req)
+    // Auth optional: no key → only public projects visible.
+    const apiKey = req.headers.get('x-api-key')?.trim() || ''
+    const userId = apiKey ? requireAuth(req).userId : ''
     const db = await getDatabase()
 
     // Auto-cleanup expired recycle bin items before listing.
@@ -57,7 +59,7 @@ export async function GET(req: NextRequest) {
     if (isDeletedView) {
       const rows = db.exec(
         `SELECT id, name, created_at, status, aspect_ratio, cover_image,
-                drama_title, is_public, user_id, project_type, deleted_at
+                drama_title, is_public, user_id, project_type, target_duration, deleted_at
          FROM projects
          WHERE status = 'deleted' AND user_id = ?
          ORDER BY deleted_at DESC`,
@@ -76,14 +78,15 @@ export async function GET(req: NextRequest) {
         isPublic: !!row[7],
         isOwner: row[8] === userId,
         projectType: row[9] || 'drama',
-        deletedAt: row[10],
+        targetDuration: row[10] || 0,
+        deletedAt: row[11],
       }))
       return NextResponse.json(projects)
     }
 
     const rows = db.exec(
       `SELECT id, name, created_at, status, aspect_ratio, cover_image,
-              drama_title, is_public, user_id, project_type
+              drama_title, is_public, user_id, project_type, target_duration
        FROM projects
        WHERE (user_id = ? OR is_public = 1) AND status != 'deleted'
        ORDER BY created_at DESC`,
@@ -102,6 +105,7 @@ export async function GET(req: NextRequest) {
       isPublic: !!row[7],
       isOwner: row[8] === userId,
       projectType: row[9] || 'drama',
+      targetDuration: row[10] || 0,
     }))
     return NextResponse.json(projects)
   } catch (error) {
@@ -116,6 +120,9 @@ export async function POST(req: NextRequest) {
     const name = typeof body.name === 'string' ? body.name.trim() : ''
     const aspectRatio = ['9:16', '16:9', '1:1'].includes(body.aspectRatio) ? body.aspectRatio : '16:9'
     const projectType = ['drama', 'video'].includes(body.projectType) ? body.projectType : 'drama'
+    const targetDuration = projectType === 'video'
+      ? Math.min(600, Math.max(0, Math.floor(Number(body.targetDuration) || 0)))
+      : 0
     if (!name || name.length > 100) throw new RouteError(400, '项目名称长度必须为 1-100 个字符')
 
     if (!existsSync(PROJECTS_DIR)) mkdirSync(PROJECTS_DIR, { recursive: true })
@@ -125,8 +132,8 @@ export async function POST(req: NextRequest) {
 
     const db = await getDatabase()
     db.run(
-      'INSERT INTO projects (id, name, output_path, aspect_ratio, user_id, project_type) VALUES (?, ?, ?, ?, ?, ?)',
-      [id, name, outputPath, aspectRatio, userId, projectType],
+      'INSERT INTO projects (id, name, output_path, aspect_ratio, user_id, project_type, target_duration) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, name, outputPath, aspectRatio, userId, projectType, targetDuration],
     )
     saveDatabase()
 
@@ -140,6 +147,7 @@ export async function POST(req: NextRequest) {
       coverImage: null,
       dramaTitle: null,
       projectType,
+      targetDuration,
       isOwner: true,
       isPublic: false,
     })
@@ -178,14 +186,20 @@ export async function DELETE(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const { userId } = requireAuth(req)
-    const { id, isPublic } = await req.json()
-    if (typeof id !== 'string' || typeof isPublic !== 'boolean') {
+    const { id, isPublic, dramaTitle } = await req.json()
+    if (typeof id !== 'string') {
       throw new RouteError(400, '请求参数无效')
     }
 
     const db = await getDatabase()
     requireProjectAccess(db, id, userId, 'write')
-    db.run('UPDATE projects SET is_public = ? WHERE id = ?', [isPublic ? 1 : 0, id])
+    if (typeof isPublic === 'boolean') {
+      db.run('UPDATE projects SET is_public = ? WHERE id = ?', [isPublic ? 1 : 0, id])
+    }
+    if (typeof dramaTitle === 'string') {
+      const t = dramaTitle.trim().slice(0, 100)
+      if (t) db.run('UPDATE projects SET drama_title = ? WHERE id = ?', [t, id])
+    }
     saveDatabase()
     return NextResponse.json({ success: true })
   } catch (error) {

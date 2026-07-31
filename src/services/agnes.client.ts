@@ -1,6 +1,19 @@
 'use client'
 
-const BASE_URL = 'https://apihub.agnes-ai.com/v1'
+// 默认走 Cloudflare Worker 代理（国内免梯子）。
+// 高级用户可在 localStorage 设 agnes_proxy_url 覆盖（留空 'direct' 则直连）。
+const DEFAULT_PROXY = 'https://agnes.h537.xyz'
+const DIRECT_HOST = 'https://apihub.agnes-ai.com'
+
+function getHost(): string {
+  if (typeof window === 'undefined') return DEFAULT_PROXY
+  const override = (localStorage.getItem('agnes_proxy_url') || '').trim().replace(/\/$/, '')
+  if (override === 'direct') return DIRECT_HOST
+  if (override) return override
+  return DEFAULT_PROXY
+}
+
+const BASE_URL = () => `${getHost()}/v1`
 
 const RETRY_DELAYS = [2000, 5000, 10000, 20000, 30000]
 const RETRY_STATUS = [429, 500, 502, 503, 504]
@@ -21,7 +34,7 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 5): Promise<T> {
 
 export async function chatCompletion(messages: any[], apiKey: string): Promise<string> {
   return withRetry(async () => {
-    const response = await fetch(`${BASE_URL}/chat/completions`, {
+    const response = await fetch(`${BASE_URL()}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model: 'agnes-2.0-flash', messages, temperature: 0.7 })
@@ -42,7 +55,7 @@ export async function generateImage(prompt: string, size: string, apiKey: string
     if (referenceImages && referenceImages.length > 0) {
       extraBody.image = referenceImages
     }
-    const response = await fetch(`${BASE_URL}/images/generations`, {
+    const response = await fetch(`${BASE_URL()}/images/generations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model: 'agnes-image-2.0-flash', prompt, size, extra_body: extraBody })
@@ -61,7 +74,7 @@ export async function generateVideo(
   prompt: string, imageBase64: string, width: number, height: number, numFrames: number, apiKey: string
 ): Promise<{ videoId: string; taskId: string }> {
   return withRetry(async () => {
-    const response = await fetch(`${BASE_URL}/videos`, {
+    const response = await fetch(`${BASE_URL()}/videos`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({
@@ -85,7 +98,7 @@ export async function generateVideo(
 
 export async function pollVideoStatus(videoId: string, apiKey: string): Promise<{ status: string; url?: string }> {
   const response = await fetch(
-    `${BASE_URL.replace('/v1', '')}/agnesapi?video_id=${videoId}`,
+    `${getHost()}/agnesapi?video_id=${videoId}`,
     { headers: { 'Authorization': `Bearer ${apiKey}` } }
   )
   if (!response.ok) throw new Error(`Poll error: ${response.status}`)
