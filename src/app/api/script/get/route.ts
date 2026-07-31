@@ -42,14 +42,29 @@ export async function GET(req: NextRequest) {
       'SELECT id, episode_number, title, summary, status FROM episodes WHERE script_id = ? ORDER BY episode_number',
       [scriptId],
     )
+    // 统计每一集实际已有的分镜数，据此判定是否"已生成"（比 status 列更可靠）
+    const sceneCountRows = db.exec(
+      'SELECT episode_id, COUNT(*) FROM scenes WHERE script_id = ? GROUP BY episode_id',
+      [scriptId],
+    )
+    const sceneCounts: Record<string, number> = {}
+    if (sceneCountRows.length && sceneCountRows[0].values.length) {
+      for (const row of sceneCountRows[0].values) {
+        sceneCounts[row[0] as string] = row[1] as number
+      }
+    }
     const episodes = epRows.length && epRows[0].values.length
-      ? epRows[0].values.map(row => ({
-          id: row[0],
-          number: row[1],
-          title: row[2],
-          summary: row[3],
-          status: row[4],
-        }))
+      ? epRows[0].values.map(row => {
+          const id = row[0] as string
+          const hasScenes = (sceneCounts[id] || 0) > 0
+          return {
+            id,
+            number: row[1],
+            title: row[2],
+            summary: row[3],
+            status: hasScenes ? 'generated' : (row[4] as string),
+          }
+        })
       : []
 
     return NextResponse.json({ scriptId, episodes })

@@ -48,6 +48,16 @@ export async function POST(req: NextRequest) {
     const db = await getDatabase()
     requireProjectAccess(db, projectId, userId, 'write')
 
+  // 重新生成：先清除该项目旧的剧本/角色/场景/剧集/图片/视频
+  db.run('DELETE FROM image_assets WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+  db.run('DELETE FROM video_clips WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+  db.run('DELETE FROM voice_tracks WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+  db.run('DELETE FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [projectId])
+  db.run('DELETE FROM episodes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [projectId])
+  db.run('DELETE FROM characters WHERE project_id = ?', [projectId])
+  db.run('DELETE FROM locations WHERE project_id = ?', [projectId])
+  db.run('DELETE FROM scripts WHERE project_id = ?', [projectId])
+
   // Save script
   const scriptId = uuid()
   db.run(

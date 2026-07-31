@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { sceneApi } from '@/services/api.client'
+import { sceneApi, getApiKeys } from '@/services/api.client'
+import { generateImage, generateVideo, pollVideoStatus } from '@/services/agnes.client'
+import { showAlert, showConfirm } from '@/components/common/Dialog'
 import {
   addSubtitleToVideo,
   downloadBlob,
@@ -18,14 +20,18 @@ function assetUrl(path: string): string {
 const isOwnerProject = () => useAppStore.getState().currentProject?.isOwner !== false
 
 export default function SceneList() {
-  const { scenes, updateScene, setVideoUrl } = useAppStore()
+  const { scenes, updateScene, setScenes, setVideoUrl } = useAppStore()
   const [images, setImages] = useState<Record<string, string>>({})
   const [videos, setVideos] = useState<Record<string, string>>({})
   const [previewImage, setPreviewImage] = useState<{ source: string; sceneId: string } | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDesc, setEditDesc] = useState('')
   const [editDialogue, setEditDialogue] = useState('')
-  const [downloadSubtitles, setDownloadSubtitles] = useState(true)
+  const [fullPrompt, setFullPrompt] = useState<string>('')
+  const [fullRefImages, setFullRefImages] = useState<string[]>([])
+  const [videoPrompt, setVideoPrompt] = useState<string>('')
+  const [loadingPrompt, setLoadingPrompt] = useState(false)
+  const [downloadSubtitles] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
   const [downloadMsg, setDownloadMsg] = useState('')
 
@@ -51,30 +57,98 @@ export default function SceneList() {
   }, [scenes])
 
   const handleGenerateImage = async (sceneId: string) => {
+    const key = getApiKeys()[0] || localStorage.getItem('agnes_api_key') || ''
+    if (!key) { showAlert('请先设置 API Key'); return }
     updateScene(sceneId, { state: 'GENERATING_IMG' })
     try {
-      const result = await sceneApi.generateImage(sceneId)
+      // 浏览器端生成（走代理）：取上下文 → 生成 → 存回
+      const ctx = await sceneApi.getContext(sceneId)
+      const imageUrl = await generateImage(ctx.prompt, ctx.size, key, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+      const result = await sceneApi.saveImage(sceneId, imageUrl, ctx.prompt, ctx.size)
       updateScene(sceneId, { state: 'IMG_READY', errorMessage: null })
-      setImages(prev => ({ ...prev, [sceneId]: result.filePath }))
+      setImages(prev => ({ ...prev, [sceneId]: result.filePath || imageUrl }))
     } catch (e: any) {
       updateScene(sceneId, { state: 'ERROR', errorMessage: e.message })
     }
   }
 
   const handleGenerateVideo = async (sceneId: string) => {
+    const key = getApiKeys()[0] || localStorage.getItem('agnes_api_key') || ''
+    if (!key) { showAlert('请先设置 API Key'); return }
     updateScene(sceneId, { state: 'GENERATING_VIDEO' })
     try {
-      const result = await sceneApi.generateVideo(sceneId)
+      // 浏览器端生成（走代理）：取视频上下文 → 生成 → 轮询 → 存回
+      const ctx = await sceneApi.getVideoContext(sceneId)
+      const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, key)
+      const maxPollTime = 5 * 60 * 1000
+      const startTime = Date.now()
+      let videoUrl = ''
+      while (Date.now() - startTime < maxPollTime) {
+        await new Promise(resolve => setTimeout(resolve, 5000))
+        const r = await pollVideoStatus(videoId, key)
+        if (r.status === 'completed' && r.url) { videoUrl = r.url; break }
+        if (r.status === 'failed') throw new Error('视频生成失败')
+      }
+      if (!videoUrl) throw new Error('视频生成超时')
+      const result = await sceneApi.saveVideo(sceneId, videoUrl, videoId)
       updateScene(sceneId, { state: 'VIDEO_READY', errorMessage: null })
-      if (result.filePath) setVideos(prev => ({ ...prev, [sceneId]: result.filePath }))
+      const finalUrl = result.filePath || videoUrl
+      setVideos(prev => ({ ...prev, [sceneId]: finalUrl }))
+      setVideoUrl(sceneId, finalUrl)
     } catch (e: any) {
       updateScene(sceneId, { state: 'ERROR', errorMessage: e.message })
     }
   }
 
-  const handleSaveEdit = (sceneId: string) => {
+  const handleSaveEdit = async (sceneId: string) => {
     updateScene(sceneId, { description: editDesc, dialogue: editDialogue })
     setEditingId(null)
+    setFullPrompt(''); setFullRefImages([]); setVideoPrompt('')
+    try { await sceneApi.updateText(sceneId, editDesc, editDialogue) } catch (e: any) { showAlert('保存失败: ' + e.message) }
+  }
+
+  const handleViewFullPrompt = async (sceneId: string) => {
+    setLoadingPrompt(true)
+    setFullPrompt('')
+    try {
+      // 先保存当前编辑，确保拼接用的是最新描述
+      await sceneApi.updateText(sceneId, editDesc, editDialogue)
+      updateScene(sceneId, { description: editDesc, dialogue: editDialogue })
+      const ctx = await sceneApi.getContext(sceneId)
+      setFullPrompt(ctx.prompt || '(无)')
+      setFullRefImages(Array.isArray(ctx.referenceImages) ? ctx.referenceImages : [])
+      // 视频提示词（需要场景已有图片才能取到）
+      try {
+        const vctx = await sceneApi.getVideoContext(sceneId)
+        setVideoPrompt(vctx.prompt || '')
+      } catch (e: any) {
+        setVideoPrompt('（需先生成图片后才能预览视频提示词）')
+      }
+    } catch (e: any) {
+      setFullPrompt('获取失败: ' + e.message)
+      setFullRefImages([])
+      setVideoPrompt('')
+    } finally {
+      setLoadingPrompt(false)
+    }
+  }
+
+  const handleDeleteScene = async (sceneId: string) => {
+    if (!(await showConfirm('确定删除这个场景吗？', { danger: true, confirmText: '删除' }))) return
+    try {
+      await sceneApi.remove(sceneId)
+      setScenes(scenes.filter(s => s.id !== sceneId))
+    } catch (e: any) { showAlert('删除失败: ' + e.message) }
+  }
+
+  const handleMoveScene = async (sceneId: string, dir: -1 | 1) => {
+    const idx = scenes.findIndex(s => s.id === sceneId)
+    const target = idx + dir
+    if (target < 0 || target >= scenes.length) return
+    const reordered = [...scenes]
+    ;[reordered[idx], reordered[target]] = [reordered[target], reordered[idx]]
+    setScenes(reordered)
+    try { await sceneApi.reorder(reordered.map(s => s.id)) } catch (e: any) { showAlert('排序失败: ' + e.message) }
   }
 
   const handleDownloadScene = async (sceneId: string, videoPath: string, dialogue: string, duration: number, sceneIndex: number) => {
@@ -128,7 +202,7 @@ export default function SceneList() {
 
       setDownloadMsg('')
     } catch (e: any) {
-      alert(`下载失败: ${e.message}`)
+      showAlert(`下载失败: ${e.message}`)
       setDownloadMsg('')
     } finally {
       setDownloadingId(null)
@@ -156,24 +230,66 @@ export default function SceneList() {
               <span className={`badge ${stateColors[scene.state] || 'badge-gray'}`}>
                 {stateLabels[scene.state] || scene.state}
               </span>
-              <button
-                onClick={() => { setEditingId(editingId === scene.id ? null : scene.id); setEditDesc(scene.description); setEditDialogue(scene.dialogue) }}
-                className="btn-ghost text-xs"
-                style={{ color: 'var(--color-text-secondary)' }}>
-                {editingId === scene.id ? '取消' : '编辑'}
-              </button>
+              {isOwnerProject() && (
+                <>
+                  <button onClick={() => handleMoveScene(scene.id, -1)} disabled={i === 0}
+                    className="btn-ghost text-xs disabled:opacity-30" style={{ color: 'var(--color-text-secondary)' }} title="上移">↑</button>
+                  <button onClick={() => handleMoveScene(scene.id, 1)} disabled={i === scenes.length - 1}
+                    className="btn-ghost text-xs disabled:opacity-30" style={{ color: 'var(--color-text-secondary)' }} title="下移">↓</button>
+                  <button
+                    onClick={() => { setEditingId(editingId === scene.id ? null : scene.id); setEditDesc(scene.description); setEditDialogue(scene.dialogue); setFullPrompt(''); setFullRefImages([]); setVideoPrompt('') }}
+                    className="btn-ghost text-xs"
+                    style={{ color: 'var(--color-text-secondary)' }}>
+                    {editingId === scene.id ? '取消' : '编辑'}
+                  </button>
+                  <button onClick={() => handleDeleteScene(scene.id)} className="btn-ghost text-xs" style={{ color: 'var(--color-error)' }} title="删除场景">删除</button>
+                </>
+              )}
             </div>
           </div>
 
           {editingId === scene.id ? (
             <div className="space-y-2 mb-2">
+              <label style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>画面描述（生成图片的主提示词）</label>
               <textarea value={editDesc} onChange={e => setEditDesc(e.target.value)}
-                className="input-field w-full text-xs resize-none" rows={2}
+                className="input-field w-full text-xs" rows={6}
+                style={{ resize: 'vertical', minHeight: 100 }}
                 placeholder="画面描述" />
+              <label style={{ fontSize: 11, color: 'var(--color-text-secondary)' }}>台词（生成视频时的对白）</label>
               <textarea value={editDialogue} onChange={e => setEditDialogue(e.target.value)}
-                className="input-field w-full text-xs resize-none" rows={2}
+                className="input-field w-full text-xs" rows={3}
+                style={{ resize: 'vertical', minHeight: 60 }}
                 placeholder="台词" />
-              <button onClick={() => handleSaveEdit(scene.id)} className="btn-success px-3 py-1 text-xs">保存</button>
+              <p style={{ fontSize: 10, color: 'var(--color-text-tertiary)' }}>
+                实际生成图片时，系统会自动在描述后追加该场景角色和地点的外貌关键词。
+              </p>
+              <div className="flex items-center gap-2">
+                <button onClick={() => handleSaveEdit(scene.id)} className="btn-success px-3 py-1 text-xs">保存</button>
+                <button onClick={() => handleViewFullPrompt(scene.id)} className="btn-outline px-3 py-1 text-xs" disabled={loadingPrompt}>
+                  {loadingPrompt ? '加载中...' : '查看完整提示词'}
+                </button>
+              </div>
+              {fullPrompt && (
+                <div style={{ marginTop: 6, padding: 8, background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginBottom: 4 }}>① 文字提示词：</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{fullPrompt}</div>
+                  <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 8, marginBottom: 4 }}>
+                    ② 参考图（{fullRefImages.length} 张，作为角色/场景一致性参考一起发给 AI）：
+                  </div>
+                  {fullRefImages.length > 0 ? (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {fullRefImages.map((url, idx) => (
+                        <img key={idx} src={url} alt={`ref${idx}`}
+                          style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4, border: '1px solid var(--color-border)' }} />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>无参考图（该场景的角色/地点还没有生成参考图）</div>
+                  )}
+                  <div style={{ fontSize: 10, color: 'var(--color-text-secondary)', marginTop: 10, marginBottom: 4 }}>③ 视频生成提示词（含说话人、台词、口型指令，以场景当前图片为首帧）：</div>
+                  <div style={{ fontSize: 11, color: 'var(--color-text)', lineHeight: 1.6, whiteSpace: 'pre-wrap' }}>{videoPrompt || '（无台词或未生成图片）'}</div>
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -212,22 +328,6 @@ export default function SceneList() {
                     ? (downloadMsg || '处理中...')
                     : '⬇ 下载'}
                 </button>
-                {scenes.filter(s => s.state === 'VIDEO_READY').length >= 2 && (
-                  <label className="flex items-center gap-1 text-xs text-gray-400 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={downloadSubtitles}
-                      onChange={(e) => setDownloadSubtitles(e.target.checked)}
-                      className="w-3 h-3"
-                    />
-                    字幕
-                  </label>
-                )}
-                {downloadSubtitles && scene.dialogue.trim() && (
-                  <span className="text-[10px] text-amber-400/70" title="软字幕需用 VLC / PotPlayer / IINA 等播放器查看">
-                    ⚠ 软字幕
-                  </span>
-                )}
               </div>
             </div>
           )}

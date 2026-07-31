@@ -12,6 +12,7 @@ export interface Project {
   isPublic?: boolean
   isOwner?: boolean
   projectType?: string
+  targetDuration?: number
 }
 
 export interface Episode {

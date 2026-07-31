@@ -16,8 +16,9 @@ export default function Page() {
     setLoggedIn(hasSession())
   }, [])
 
-  const handleLoginComplete = (token: string) => {
+  const handleLoginComplete = (token: string, username?: string) => {
     setSessionToken(token)
+    if (username) localStorage.setItem('agnes_username', username)
     setLoggedIn(true)
     setShowLogin(false)
   }

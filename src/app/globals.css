@@ -12,9 +12,9 @@
   --color-surface: #F3EFE8;
   --color-surface-alt: #EDE8E0;
   --color-border: #DDD7CD;
-  --color-text: #2C2416;
-  --color-text-secondary: #8C8275;
-  --color-text-tertiary: #B5AB9E;
+  --color-text: #241E12;
+  --color-text-secondary: #6B6153;
+  --color-text-tertiary: #938878;
   --color-accent: #C7512E;
   --color-accent-hover: #A84325;
   --color-accent-soft: #F5E6DE;
@@ -355,7 +355,7 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
    HOME BOTTOM (V5: 2栏)
    ================================================================ */
 
-.home-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+.home-bottom { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
 .info-card { background: var(--color-surface); padding: 18px 22px; }
 .info-card h4 { font-size: 12px; font-weight: 600; color: var(--color-text-secondary); margin-bottom: 10px; }
 .cl-item { font-size: 12px; color: var(--color-text-secondary); padding: 6px 0; border-bottom: 1px solid var(--color-border); display: flex; gap: 8px; }
@@ -364,7 +364,7 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
 .fb-item { font-size: 12px; color: var(--color-text-secondary); padding: 6px 0; display: flex; gap: 8px; align-items: center; }
 .fb-status { font-size: 10px; font-weight: 500; padding: 1px 6px; border-radius: 3px; flex-shrink: 0; }
 .fb-status.open { background: var(--color-accent-soft); color: #B86A3A; }
-.fb-status.closed { background: var(--color-success-bg); color: var(--color-success); }
+.fb-status.closed, .fb-status.done { background: var(--color-success-bg); color: var(--color-success); }
 
 /* ================================================================
    BADGE
@@ -712,8 +712,8 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
   font-size: 13px; font-weight: 600; color: var(--color-text-secondary);
 }
 
-/* Home bottom grid: 3 columns (贡献排行 / 更新日志 / 反馈) */
-.home-bottom { grid-template-columns: 1fr 1fr 1fr; }
+/* Home bottom grid: 4 columns (平台数据 / 贡献排行 / 更新日志 / 反馈) */
+.home-bottom { grid-template-columns: 1fr 1fr 1fr 1fr; }
 
 /* ================================================================
    RESPONSIVE
@@ -724,7 +724,6 @@ select.input-field option { background: var(--color-bg); color: var(--color-text
   .main-content { margin-left: 0; }
   .page-content { padding: 20px; }
   .create-form { grid-template-columns: 1fr; }
-  .home-bottom { grid-template-columns: 1fr; }
   .script-view { flex-direction: column; }
   .idea-panel { width: 100%; border-right: none; border-bottom: 1px solid var(--color-border); }
   .commit-panel { width: 100%; }

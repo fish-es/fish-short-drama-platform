@@ -74,8 +74,11 @@ async function api(url: string, options: RequestInit = {}): Promise<any> {
 // Projects
 export const projectApi = {
   list: () => api('/api/project'),
-  create: (name: string, aspectRatio: string, projectType: string = 'drama') => api('/api/project', { method: 'POST', body: JSON.stringify({ name, aspectRatio, projectType }) }),
-  delete: (id: string) => api('/api/project', { method: 'DELETE', body: JSON.stringify({ id }) }),
+  listDeleted: () => api('/api/project?deleted=1'),
+  create: (name: string, aspectRatio: string, projectType: string = 'drama', targetDuration: number = 0) => api('/api/project', { method: 'POST', body: JSON.stringify({ name, aspectRatio, projectType, targetDuration }) }),
+  delete: (id: string, permanent: boolean = false) => api('/api/project', { method: 'DELETE', body: JSON.stringify({ id, permanent }) }),
+  restore: (id: string) => api('/api/project/restore', { method: 'POST', body: JSON.stringify({ id }) }),
+  rename: (id: string, dramaTitle: string) => api('/api/project', { method: 'PUT', body: JSON.stringify({ id, dramaTitle }) }),
 }
 
 // Script / Outline
@@ -105,4 +108,8 @@ export const sceneApi = {
   getVideoContext: (sceneId: string) => api(`/api/video/context?sceneId=${sceneId}`),
   saveVideo: (sceneId: string, videoUrl: string, videoId: string) =>
     api('/api/video/save', { method: 'POST', body: JSON.stringify({ sceneId, videoUrl, videoId }) }),
+  updateText: (sceneId: string, description: string, dialogue: string) =>
+    api('/api/scene/manage', { method: 'PUT', body: JSON.stringify({ sceneId, description, dialogue }) }),
+  remove: (sceneId: string) => api('/api/scene/manage', { method: 'DELETE', body: JSON.stringify({ sceneId }) }),
+  reorder: (orderedIds: string[]) => api('/api/scene/manage', { method: 'POST', body: JSON.stringify({ orderedIds }) }),
 }
