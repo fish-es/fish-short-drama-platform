@@ -10,15 +10,82 @@ import {
   RouteError,
 } from '@/services/security.service'
 
+// Permanently delete a project and all its associated data (cascade + rmSync).
+function permanentlyDeleteProject(db: any, projectId: string, outputPath: string): void {
+  db.run('BEGIN')
+  try {
+    db.run('DELETE FROM image_assets WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+    db.run('DELETE FROM video_clips WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+    db.run('DELETE FROM voice_tracks WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [projectId])
+    db.run('DELETE FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [projectId])
+    db.run('DELETE FROM episodes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [projectId])
+    db.run('DELETE FROM characters WHERE project_id = ?', [projectId])
+    db.run('DELETE FROM locations WHERE project_id = ?', [projectId])
+    db.run('DELETE FROM scripts WHERE project_id = ?', [projectId])
+    db.run('DELETE FROM projects WHERE id = ?', [projectId])
+    db.run('COMMIT')
+  } catch (error) {
+    db.run('ROLLBACK')
+    throw error
+  }
+  if (existsSync(outputPath)) rmSync(outputPath, { recursive: true, force: true })
+}
+
+// Auto-cleanup: permanently delete projects that have been in the recycle bin for over 30 days.
+// Returns the number of projects cleaned up.
+function cleanupRecycleBin(db: any): number {
+  const r = db.exec("SELECT id, output_path FROM projects WHERE status = 'deleted' AND deleted_at IS NOT NULL AND deleted_at < datetime('now', '-30 days')")
+  if (!r.length) return 0
+  const rows = r[0].values
+  rows.forEach((row: any) => {
+    permanentlyDeleteProject(db, String(row[0]), String(row[1]))
+  })
+  return rows.length
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { userId } = requireAuth(req)
     const db = await getDatabase()
+
+    // Auto-cleanup expired recycle bin items before listing.
+    const cleaned = cleanupRecycleBin(db)
+    if (cleaned > 0) saveDatabase()
+
+    const isDeletedView = req.nextUrl.searchParams.get('deleted') === '1'
+
+    if (isDeletedView) {
+      const rows = db.exec(
+        `SELECT id, name, created_at, status, aspect_ratio, cover_image,
+                drama_title, is_public, user_id, project_type, deleted_at
+         FROM projects
+         WHERE status = 'deleted' AND user_id = ?
+         ORDER BY deleted_at DESC`,
+        [userId],
+      )
+      if (!rows.length || !rows[0].values.length) return NextResponse.json([])
+      const projects = rows[0].values.map(row => ({
+        id: row[0],
+        name: row[1],
+        createdAt: row[2],
+        status: row[3],
+        outputPath: '',
+        aspectRatio: row[4] || '16:9',
+        coverImage: row[5],
+        dramaTitle: row[6],
+        isPublic: !!row[7],
+        isOwner: row[8] === userId,
+        projectType: row[9] || 'drama',
+        deletedAt: row[10],
+      }))
+      return NextResponse.json(projects)
+    }
+
     const rows = db.exec(
       `SELECT id, name, created_at, status, aspect_ratio, cover_image,
               drama_title, is_public, user_id, project_type
        FROM projects
-       WHERE user_id = ? OR is_public = 1
+       WHERE (user_id = ? OR is_public = 1) AND status != 'deleted'
        ORDER BY created_at DESC`,
       [userId],
     )
@@ -84,32 +151,24 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const { userId } = requireAuth(req)
-    const { id } = await req.json()
+    const body = await req.json()
+    const { id, permanent } = body
     if (typeof id !== 'string') throw new RouteError(400, '项目 ID 无效')
 
     const db = await getDatabase()
     requireProjectAccess(db, id, userId, 'write')
-    const outputPath = getProjectDirectory(userId, id)
 
-    db.run('BEGIN')
-    try {
-      db.run('DELETE FROM image_assets WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [id])
-      db.run('DELETE FROM video_clips WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [id])
-      db.run('DELETE FROM voice_tracks WHERE scene_id IN (SELECT id FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?))', [id])
-      db.run('DELETE FROM scenes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [id])
-      db.run('DELETE FROM episodes WHERE script_id IN (SELECT id FROM scripts WHERE project_id = ?)', [id])
-      db.run('DELETE FROM characters WHERE project_id = ?', [id])
-      db.run('DELETE FROM locations WHERE project_id = ?', [id])
-      db.run('DELETE FROM scripts WHERE project_id = ?', [id])
-      db.run('DELETE FROM projects WHERE id = ? AND user_id = ?', [id, userId])
-      db.run('COMMIT')
-    } catch (error) {
-      db.run('ROLLBACK')
-      throw error
+    if (permanent === true) {
+      // Permanently delete: cascade + rmSync.
+      permanentlyDeleteProject(db, id, getProjectDirectory(userId, id))
+      saveDatabase()
+      return NextResponse.json({ success: true })
     }
-    saveDatabase()
 
-    if (existsSync(outputPath)) rmSync(outputPath, { recursive: true, force: true })
+    // Soft delete: move to recycle bin. No cascade, no rmSync.
+    db.run("UPDATE projects SET status = 'deleted', deleted_at = datetime('now') WHERE id = ? AND user_id = ?", [id, userId])
+    cleanupRecycleBin(db)
+    saveDatabase()
     return NextResponse.json({ success: true })
   } catch (error) {
     return routeErrorResponse(error)
