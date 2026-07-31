@@ -36,7 +36,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [changelog, setChangelog] = useState<any[]>([])
   const [changelogContent, setChangelogContent] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
+  const [projectTab, setProjectTab] = useState<'mine' | 'public' | 'recycle'>('mine')
+  const [deletedProjects, setDeletedProjects] = useState<any[]>([])
   const [commitPanelOpen, setCommitPanelOpen] = useState(false)
   const [commits, setCommits] = useState([
     { hash: '7945760', author: 'fish-es', message: 'Merge pull request #53 from shixigege/dev', time: '2026/7/26' },
@@ -116,7 +117,12 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     setCurrentProject(project)
     try { const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }); const data = await res.json(); if (data?.episodes?.length) setEpisodes(data.episodes, data.scriptId) } catch { }
   }
-  const handleDelete = async (id: string) => { if (!confirm('确定要删除这个项目吗？')) return; await projectApi.delete(id); setProjects(projects.filter(p => p.id !== id)) }
+  const handleDelete = async (id: string) => {
+    if (!confirm('确定要将该项目移入回收站吗？30 天后将自动清理')) return
+    await projectApi.delete(id)
+    setProjects(projects.filter(p => p.id !== id))
+    projectApi.listDeleted().then(setDeletedProjects).catch(() => {})
+  }
   const handleRegenCover = async (project: any) => {
     const key = localStorage.getItem('agnes_api_key') || ''
     if (!key) { alert('请先设置 API Key'); return }
@@ -149,7 +155,17 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     window.location.reload()
   }
 
-  const filtered = projectTab === 'mine' ? projects.filter(p => p.isOwner !== false) : projects.filter(p => p.isPublic)
+  const filtered = projectTab === 'mine'
+    ? projects.filter(p => p.isOwner !== false)
+    : projectTab === 'public' ? projects.filter(p => p.isPublic) : deletedProjects
+
+  const handleRestore = async (id: string) => {
+    try { await projectApi.restore(id); setDeletedProjects(deletedProjects.filter(p => p.id !== id)) } catch (e: any) { alert('还原失败: ' + e.message) }
+  }
+  const handlePermanentDelete = async (id: string) => {
+    if (!confirm('彻底删除后将无法恢复，确定吗？')) return
+    try { await projectApi.delete(id, true); setDeletedProjects(deletedProjects.filter(p => p.id !== id)) } catch (e: any) { alert('删除失败: ' + e.message) }
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -284,17 +300,23 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
               <div className="project-tabs">
                 <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
                 <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
+                <button className={`project-tab ${projectTab === 'recycle' ? 'active' : ''}`} onClick={() => { setProjectTab('recycle'); projectApi.listDeleted().then(setDeletedProjects).catch(() => {}) }}>回收站</button>
                 <div style={{ flex: 1 }} />
                 <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
               </div>
 
               {filtered.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
-                  {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : '暂无公开项目'}
+                  {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : projectTab === 'public' ? '暂无公开项目' : '回收站是空的'}
                 </div>
               ) : (
-                filtered.map(project => (
-                  <div key={project.id} className="project-row" onClick={() => handleOpen(project)}>
+                filtered.map(project => {
+                  const isRecycle = projectTab === 'recycle'
+                  const remainDays = isRecycle && project.deletedAt
+                    ? Math.max(0, 30 - Math.floor((Date.now() - new Date(project.deletedAt + 'Z').getTime()) / 86400000))
+                    : 0
+                  return (
+                  <div key={project.id} className="project-row" onClick={() => !isRecycle && handleOpen(project)}>
                     <div className="pr-left">
                       {project.coverImage ? (
                         <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
@@ -305,22 +327,41 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                       )}
                       <span className="project-name">{project.dramaTitle || project.name}</span>
                       <div className="project-meta">
-                        <span>{project.aspectRatio}</span>
-                        <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
-                        {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
+                        {isRecycle ? (
+                          <>
+                            <span>删除于 {project.deletedAt ? new Date(project.deletedAt + 'Z').toLocaleString('zh-CN') : '—'}</span>
+                            <span style={{ color: remainDays <= 7 ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>剩余 {remainDays} 天</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{project.aspectRatio}</span>
+                            <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
+                            {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
+                          </>
+                        )}
                       </div>
                     </div>
                     <div className="pr-right" onClick={e => e.stopPropagation()}>
-                      {project.isOwner !== false && (
-                        <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
-                      )}
-                      <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
-                      {project.isOwner !== false && (
-                        <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
+                      {isRecycle ? (
+                        <>
+                          <button className="btn-outline" onClick={() => handleRestore(project.id)}>还原</button>
+                          <button className="btn-danger" onClick={() => handlePermanentDelete(project.id)}>彻底删除</button>
+                        </>
+                      ) : (
+                        <>
+                          {project.isOwner !== false && (
+                            <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
+                          )}
+                          <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
+                          {project.isOwner !== false && (
+                            <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
-                ))
+                  )
+                })
               )}
             </div>
           )}
