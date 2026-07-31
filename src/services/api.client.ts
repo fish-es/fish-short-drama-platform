@@ -74,8 +74,10 @@ async function api(url: string, options: RequestInit = {}): Promise<any> {
 // Projects
 export const projectApi = {
   list: () => api('/api/project'),
+  listDeleted: () => api('/api/project?deleted=1'),
   create: (name: string, aspectRatio: string, projectType: string = 'drama') => api('/api/project', { method: 'POST', body: JSON.stringify({ name, aspectRatio, projectType }) }),
-  delete: (id: string) => api('/api/project', { method: 'DELETE', body: JSON.stringify({ id }) }),
+  delete: (id: string, permanent: boolean = false) => api('/api/project', { method: 'DELETE', body: JSON.stringify({ id, permanent }) }),
+  restore: (id: string) => api('/api/project/restore', { method: 'POST', body: JSON.stringify({ id }) }),
 }
 
 // Script / Outline

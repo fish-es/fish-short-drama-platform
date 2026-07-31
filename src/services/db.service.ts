@@ -76,6 +76,9 @@ function runMigrations(db: Database): void {
     if (!cols.includes('project_type')) {
       db.run("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'drama'")
     }
+    if (!cols.includes('deleted_at')) {
+      db.run("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
+    }
   }
 
   // Auth tables (added in login feature)
@@ -151,7 +154,8 @@ CREATE TABLE IF NOT EXISTS projects (
   drama_title TEXT,
   user_id TEXT NOT NULL DEFAULT '',
   is_public INTEGER NOT NULL DEFAULT 0,
-  project_type TEXT NOT NULL DEFAULT 'drama'
+  project_type TEXT NOT NULL DEFAULT 'drama',
+  deleted_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS scripts (
