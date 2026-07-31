@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAppStore } from '@/store'
-import { sceneApi } from '@/services/api.client'
+import { sceneApi, getApiKeys } from '@/services/api.client'
 import { generateImage, generateVideo, pollVideoStatus } from '@/services/agnes.client'
 import {
   mergeVideosWithSubtitles,
@@ -22,7 +22,7 @@ export default function PipelineControl() {
 
   // Client-side merge state
   const [mergeStatus, setMergeStatus] = useState<'idle' | 'merging' | 'done' | 'error'>('idle')
-  const [mergeSubtitles, setMergeSubtitles] = useState(true)
+  const [mergeSubtitles] = useState(false)
   const [mergeProgressMsg, setMergeProgressMsg] = useState('')
 
   // Scene selection for merge
@@ -88,177 +88,139 @@ export default function PipelineControl() {
     setElapsed(0)
     setStats({ images: 0, videos: 0, imgTime: 0, vidTime: 0 })
 
-    try {
-      const MAX_CONSECUTIVE_FAILURES = 10
-      let consecutiveFailures = 0
+    const keys = getApiKeys()
+    const pool = keys.length > 0 ? keys : ['']
+    const primaryKey = pool[0]
+    const MAX_CONSECUTIVE_FAILURES = 10
+    let consecutiveFailures = 0
+    let stopped = false
 
-      while (true) {
-        const currentScenes = useAppStore.getState().scenes
-        const totalScenes = currentScenes.length
-        const imgDone = currentScenes.filter(s => s.state !== 'DRAFT' && s.state !== 'GENERATING_IMG').length
-        const videoDone = currentScenes.filter(s => s.state === 'VIDEO_READY').length
-        const allDone = videoDone === totalScenes
-        const inProgress = currentScenes.some(s => s.state === 'GENERATING_IMG' || s.state === 'GENERATING_VIDEO')
+    const refreshProgress = () => {
+      const cs = useAppStore.getState().scenes
+      const total = cs.length
+      const imgDone = cs.filter(s => s.state !== 'DRAFT' && s.state !== 'GENERATING_IMG').length
+      const videoDone = cs.filter(s => s.state === 'VIDEO_READY').length
+      const imgProgress = total > 0 ? (imgDone / total) * 40 : 0
+      const vidProgress = total > 0 ? (videoDone / total) * 45 : 0
+      setPipelineProgress(Math.round(imgProgress + vidProgress))
+      setPipelineStep(`图片 ${imgDone}/${total}，视频 ${videoDone}/${total}（${pool.length} Key 并行）`)
+    }
 
-        const imgProgress = totalScenes > 0 ? (imgDone / totalScenes) * 40 : 0
-        const vidProgress = totalScenes > 0 ? (videoDone / totalScenes) * 45 : 0
-        setPipelineProgress(Math.round(imgProgress + vidProgress))
-        setPipelineStep(`图片 ${imgDone}/${totalScenes}，视频 ${videoDone}/${totalScenes}`)
+    // Atomically claim the next task (no await between read and mark → race-free)
+    type Task = { id: string; kind: 'image' | 'video' | 'retry' }
+    const claimTask = (): Task | 'wait' | 'done' | 'stop' => {
+      const state = useAppStore.getState()
+      if (state.pipelineStatus !== 'running' || stopped) return 'stop'
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return 'stop'
+      const cs = state.scenes
+      const total = cs.length
+      const videoDone = cs.filter(s => s.state === 'VIDEO_READY').length
+      if (videoDone === total) return 'done'
 
-        if (allDone) break
-        if (useAppStore.getState().pipelineStatus !== 'running') return
-
-        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
-          setPipelineStep(`连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，已暂停`)
-          setPipelineStatus('paused')
-          return
+      const draft = cs.find(s => s.state === 'DRAFT')
+      if (draft) {
+        updateScene(draft.id, { state: 'GENERATING_IMG', errorMessage: null })
+        return { id: draft.id, kind: 'image' }
+      }
+      const allImagesComplete = !cs.some(s => s.state === 'DRAFT' || s.state === 'GENERATING_IMG')
+      const err = cs.find(s => s.state === 'ERROR')
+      if (err && !allImagesComplete) {
+        updateScene(err.id, { state: 'GENERATING_IMG', errorMessage: null })
+        return { id: err.id, kind: 'image' }
+      }
+      if (allImagesComplete) {
+        const imgReady = cs.find(s => s.state === 'IMG_READY')
+        if (imgReady) {
+          updateScene(imgReady.id, { state: 'GENERATING_VIDEO', errorMessage: null })
+          return { id: imgReady.id, kind: 'video' }
         }
-
-        if (inProgress) {
-          await new Promise(resolve => setTimeout(resolve, 3000))
-          continue
-        }
-
-        const draftScene = currentScenes.find(s => s.state === 'DRAFT')
-        const errorScene = currentScenes.find(s => s.state === 'ERROR')
-        const imgReadyScene = currentScenes.find(s => s.state === 'IMG_READY')
-
-        const allImagesComplete = !currentScenes.some(s => s.state === 'DRAFT' || s.state === 'GENERATING_IMG')
-        const hasImageErrors = currentScenes.some(s => s.state === 'ERROR')
-
-        if (draftScene) {
-          setPipelineStep(`生成图片 (${imgDone}/${totalScenes})`)
-          const t0 = Date.now()
-          try {
-            const apiKey = localStorage.getItem('agnes_api_key') || ''
-            const ctx = await sceneApi.getContext(draftScene.id)
-            const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
-            await sceneApi.saveImage(draftScene.id, imageUrl, ctx.prompt, ctx.size)
-            updateScene(draftScene.id, { state: 'IMG_READY', errorMessage: null })
-            consecutiveFailures = 0
-            setStats(prev => ({ ...prev, images: prev.images + 1, imgTime: prev.imgTime + (Date.now() - t0) }))
-          } catch (e: any) {
-            updateScene(draftScene.id, { state: 'ERROR', errorMessage: e.message })
-            consecutiveFailures++
-          }
-        } else if (errorScene && !allImagesComplete) {
-          setPipelineStep(`重试失败图片... 等待15秒`)
-          await new Promise(resolve => setTimeout(resolve, 15000))
-          try {
-            const apiKey = localStorage.getItem('agnes_api_key') || ''
-            updateScene(errorScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-            const ctx = await sceneApi.getContext(errorScene.id)
-            const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
-            await sceneApi.saveImage(errorScene.id, imageUrl, ctx.prompt, ctx.size)
-            updateScene(errorScene.id, { state: 'IMG_READY', errorMessage: null })
-            consecutiveFailures = 0
-          } catch (e: any) {
-            updateScene(errorScene.id, { state: 'ERROR', errorMessage: e.message })
-            consecutiveFailures++
-          }
-        } else if (imgReadyScene) {
-          setPipelineStep(`生成视频 (${videoDone}/${totalScenes})`)
-          const t0 = Date.now()
-          try {
-            const apiKey = localStorage.getItem('agnes_api_key') || ''
-            const ctx = await sceneApi.getVideoContext(imgReadyScene.id)
-            const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, apiKey)
-            const maxPollTime = 5 * 60 * 1000
-            const pollInterval = 5000
-            const startTime = Date.now()
-            let videoUrl = ''
-            while (Date.now() - startTime < maxPollTime) {
-              await new Promise(resolve => setTimeout(resolve, pollInterval))
-              const result = await pollVideoStatus(videoId, apiKey)
-              if (result.status === 'completed' && result.url) { videoUrl = result.url; break }
-              if (result.status === 'failed') throw new Error('视频生成失败')
-            }
-            if (!videoUrl) throw new Error('视频生成超时')
-            await sceneApi.saveVideo(imgReadyScene.id, videoUrl, videoId)
-            updateScene(imgReadyScene.id, { state: 'VIDEO_READY', errorMessage: null })
-            consecutiveFailures = 0
-            setStats(prev => ({ ...prev, videos: prev.videos + 1, vidTime: prev.vidTime + (Date.now() - t0) }))
-          } catch (e: any) {
-            updateScene(imgReadyScene.id, { state: 'ERROR', errorMessage: e.message })
-            consecutiveFailures++
-          }
-
-          const freshScenes = useAppStore.getState().scenes
-          const failedImageScene = freshScenes.find(s => s.state === 'ERROR')
-          if (failedImageScene) {
-            setPipelineStep(`视频完成，顺便重试失败的图片...`)
-            try {
-              const apiKey = localStorage.getItem('agnes_api_key') || ''
-              const imgRes = await fetch(`/api/scene/image?sceneId=${failedImageScene.id}`, {
-                headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
-              })
-              const imgData = await imgRes.json()
-              if (!imgData.filePath) {
-                updateScene(failedImageScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-                const ctx = await sceneApi.getContext(failedImageScene.id)
-                const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
-                await sceneApi.saveImage(failedImageScene.id, imageUrl, ctx.prompt, ctx.size)
-                updateScene(failedImageScene.id, { state: 'IMG_READY', errorMessage: null })
-                consecutiveFailures = 0
-              }
-            } catch {}
-          }
-        } else if (errorScene) {
-          setPipelineStep(`重试失败场景... 等待15秒`)
-          await new Promise(resolve => setTimeout(resolve, 15000))
-
-          let hasImage = false
-          try {
-            const imgRes = await fetch(`/api/scene/image?sceneId=${errorScene.id}`, {
-              headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' },
-            })
-            const imgData = await imgRes.json()
-            hasImage = !!imgData.filePath
-          } catch {}
-
-          if (hasImage) {
-            try {
-              const apiKey = localStorage.getItem('agnes_api_key') || ''
-              updateScene(errorScene.id, { state: 'GENERATING_VIDEO', errorMessage: null })
-              const ctx = await sceneApi.getVideoContext(errorScene.id)
-              const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, apiKey)
-              const maxPollTime = 5 * 60 * 1000
-              const pollInterval = 5000
-              const startTime = Date.now()
-              let videoUrl = ''
-              while (Date.now() - startTime < maxPollTime) {
-                await new Promise(resolve => setTimeout(resolve, pollInterval))
-                const result = await pollVideoStatus(videoId, apiKey)
-                if (result.status === 'completed' && result.url) { videoUrl = result.url; break }
-                if (result.status === 'failed') throw new Error('视频生成失败')
-              }
-              if (!videoUrl) throw new Error('视频生成超时')
-              await sceneApi.saveVideo(errorScene.id, videoUrl, videoId)
-              updateScene(errorScene.id, { state: 'VIDEO_READY', errorMessage: null })
-              consecutiveFailures = 0
-            } catch (e: any) {
-              updateScene(errorScene.id, { state: 'ERROR', errorMessage: e.message })
-              consecutiveFailures++
-            }
-          } else {
-            try {
-              const apiKey = localStorage.getItem('agnes_api_key') || ''
-              updateScene(errorScene.id, { state: 'GENERATING_IMG', errorMessage: null })
-              const ctx = await sceneApi.getContext(errorScene.id)
-              const imageUrl = await generateImage(ctx.prompt, ctx.size, apiKey, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
-              await sceneApi.saveImage(errorScene.id, imageUrl, ctx.prompt, ctx.size)
-              updateScene(errorScene.id, { state: 'IMG_READY', errorMessage: null })
-              consecutiveFailures = 0
-            } catch (e: any) {
-              updateScene(errorScene.id, { state: 'ERROR', errorMessage: e.message })
-              consecutiveFailures++
-            }
-          }
-        } else {
-          break
+        if (err) {
+          updateScene(err.id, { state: 'GENERATING_VIDEO', errorMessage: null })
+          return { id: err.id, kind: 'retry' }
         }
       }
+      return 'wait'
+    }
 
+    const doImage = async (sceneId: string, key: string) => {
+      const t0 = Date.now()
+      try {
+        const ctx = await sceneApi.getContext(sceneId)
+        const imageUrl = await generateImage(ctx.prompt, ctx.size, key, ctx.referenceImages?.length > 0 ? ctx.referenceImages : undefined)
+        await sceneApi.saveImage(sceneId, imageUrl, ctx.prompt, ctx.size)
+        updateScene(sceneId, { state: 'IMG_READY', errorMessage: null })
+        consecutiveFailures = 0
+        setStats(prev => ({ ...prev, images: prev.images + 1, imgTime: prev.imgTime + (Date.now() - t0) }))
+      } catch (e: any) {
+        updateScene(sceneId, { state: 'ERROR', errorMessage: e.message })
+        consecutiveFailures++
+      }
+    }
+
+    const doVideo = async (sceneId: string, key: string) => {
+      const t0 = Date.now()
+      try {
+        const ctx = await sceneApi.getVideoContext(sceneId)
+        const { videoId } = await generateVideo(ctx.prompt, ctx.imageBase64, ctx.width, ctx.height, ctx.numFrames, key)
+        const maxPollTime = 5 * 60 * 1000
+        const startTime = Date.now()
+        let videoUrl = ''
+        while (Date.now() - startTime < maxPollTime) {
+          await new Promise(resolve => setTimeout(resolve, 5000))
+          const result = await pollVideoStatus(videoId, key)
+          if (result.status === 'completed' && result.url) { videoUrl = result.url; break }
+          if (result.status === 'failed') throw new Error('视频生成失败')
+        }
+        if (!videoUrl) throw new Error('视频生成超时')
+        await sceneApi.saveVideo(sceneId, videoUrl, videoId)
+        updateScene(sceneId, { state: 'VIDEO_READY', errorMessage: null })
+        consecutiveFailures = 0
+        setStats(prev => ({ ...prev, videos: prev.videos + 1, vidTime: prev.vidTime + (Date.now() - t0) }))
+      } catch (e: any) {
+        updateScene(sceneId, { state: 'ERROR', errorMessage: e.message })
+        consecutiveFailures++
+      }
+    }
+
+    // ERROR scene when all images done: check if it already has an image → video, else image
+    const doRetry = async (sceneId: string, key: string) => {
+      await new Promise(resolve => setTimeout(resolve, 15000))
+      let hasImage = false
+      try {
+        const imgRes = await fetch(`/api/scene/image?sceneId=${sceneId}`, { headers: { 'x-api-key': primaryKey } })
+        const imgData = await imgRes.json()
+        hasImage = !!imgData.filePath
+      } catch {}
+      if (hasImage) {
+        await doVideo(sceneId, key)
+      } else {
+        updateScene(sceneId, { state: 'GENERATING_IMG', errorMessage: null })
+        await doImage(sceneId, key)
+      }
+    }
+
+    const worker = async (key: string) => {
+      while (true) {
+        const task = claimTask()
+        if (task === 'stop' || task === 'done') return
+        if (task === 'wait') { await new Promise(r => setTimeout(r, 2000)); continue }
+        refreshProgress()
+        if (task.kind === 'image') await doImage(task.id, key)
+        else if (task.kind === 'video') await doVideo(task.id, key)
+        else await doRetry(task.id, key)
+        refreshProgress()
+      }
+    }
+
+    try {
+      await Promise.all(pool.map(k => worker(k)))
+
+      if (useAppStore.getState().pipelineStatus !== 'running') return
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        setPipelineStep(`连续失败 ${MAX_CONSECUTIVE_FAILURES} 次，已暂停`)
+        setPipelineStatus('paused')
+        return
+      }
       setPipelineProgress(85)
       setPipelineStep('完成! 可以合成视频了')
       setPipelineStatus('completed')
@@ -421,18 +383,6 @@ export default function PipelineControl() {
             ))}
           </div>
 
-          {/* Subtitle toggle */}
-          <label className="flex items-center gap-2 text-sm text-gray-300 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={mergeSubtitles}
-              onChange={(e) => setMergeSubtitles(e.target.checked)}
-              disabled={mergeStatus === 'merging'}
-              className="w-4 h-4"
-            />
-            包含软字幕（MP4 内嵌）
-          </label>
-
           {/* Action buttons */}
           <div className="flex items-center gap-3 flex-wrap">
             {mergeStatus !== 'merging' && (
@@ -467,14 +417,6 @@ export default function PipelineControl() {
 
           {mergeStatus === 'error' && (
             <p className="text-sm text-red-400">{mergeProgressMsg}</p>
-          )}
-
-          {/* Soft subtitle notice */}
-          {mergeSubtitles && (
-            <p className="text-xs text-amber-400/70">
-              ⚠ 软字幕为 MP4 内嵌字幕轨道，浏览器的 &lt;video&gt; 标签不支持显示。
-              请使用 <strong>VLC</strong> / <strong>PotPlayer</strong> / <strong>IINA</strong> 等播放器打开下载的视频，即可在字幕菜单中开启中文字幕。
-            </p>
           )}
         </div>
       ) : null}

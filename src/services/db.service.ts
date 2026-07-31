@@ -76,6 +76,20 @@ function runMigrations(db: Database): void {
     if (!cols.includes('project_type')) {
       db.run("ALTER TABLE projects ADD COLUMN project_type TEXT DEFAULT 'drama'")
     }
+    if (!cols.includes('deleted_at')) {
+      db.run("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
+    }
+    if (!cols.includes('target_duration')) {
+      db.run("ALTER TABLE projects ADD COLUMN target_duration INTEGER DEFAULT 0")
+    }
+  }
+
+  // feedback: reply + status columns (admin 回复/标记已完成)
+  const fbInfo = db.exec("PRAGMA table_info(feedback)")
+  if (fbInfo.length > 0) {
+    const cols = fbInfo[0].values.map((row: any) => row[1])
+    if (!cols.includes('reply')) db.run("ALTER TABLE feedback ADD COLUMN reply TEXT")
+    if (!cols.includes('status')) db.run("ALTER TABLE feedback ADD COLUMN status TEXT NOT NULL DEFAULT 'open'")
   }
 
   // Auth tables (added in login feature)
@@ -151,7 +165,9 @@ CREATE TABLE IF NOT EXISTS projects (
   drama_title TEXT,
   user_id TEXT NOT NULL DEFAULT '',
   is_public INTEGER NOT NULL DEFAULT 0,
-  project_type TEXT NOT NULL DEFAULT 'drama'
+  project_type TEXT NOT NULL DEFAULT 'drama',
+  target_duration INTEGER NOT NULL DEFAULT 0,
+  deleted_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS scripts (
@@ -243,7 +259,9 @@ CREATE TABLE IF NOT EXISTS feedback (
   user_id TEXT NOT NULL DEFAULT '',
   nickname TEXT NOT NULL DEFAULT '',
   content TEXT NOT NULL,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  reply TEXT,
+  status TEXT NOT NULL DEFAULT 'open'
 );
 
 CREATE TABLE IF NOT EXISTS changelog (

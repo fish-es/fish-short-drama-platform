@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from 'react'
 import { useAppStore } from '@/store'
-import { projectApi, setApiKey, logout } from '@/services/api.client'
+import { projectApi, setApiKey, setApiKeys, getApiKeys, logout } from '@/services/api.client'
 import { generateImage } from '@/services/agnes.client'
 import { downloadProtectedFile, ProtectedImage } from '@/components/common/ProtectedMedia'
+import { showAlert, showConfirm, showPrompt } from '@/components/common/Dialog'
 import { getDeployEnv } from '@/services/deploy-env'
 
-interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string }
+interface FeedbackItem { id: string; nickname: string; content: string; createdAt: string; reply?: string | null; status?: string }
 
 interface HomeProps {
   loggedIn?: boolean
@@ -36,9 +37,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
   const [changelog, setChangelog] = useState<any[]>([])
   const [changelogContent, setChangelogContent] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
-  const [projectTab, setProjectTab] = useState<'mine' | 'public'>('mine')
-  const [commitsOpen, setCommitsOpen] = useState(true)
-  const [commits] = useState([
+  const [projectTab, setProjectTab] = useState<'mine' | 'public' | 'recycle'>('mine')
+  const [deletedProjects, setDeletedProjects] = useState<any[]>([])
+  const [commitPanelOpen, setCommitPanelOpen] = useState(false)
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [commits, setCommits] = useState([
     { hash: '7945760', author: 'fish-es', message: 'Merge pull request #53 from shixigege/dev', time: '2026/7/26' },
     { hash: 'a3f2c81', author: 'fish-es', message: 'fix: 修复登录态持久化问题', time: '2026/7/25' },
     { hash: 'e8b1d47', author: 'shixigege', message: 'feat: 新增环境标识徽章 deploy-env 服务', time: '2026/7/25' },
@@ -50,58 +53,97 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     { hash: '5a8f3d6', author: 'fish-es', message: 'fix: 封面图保护链接鉴权修复', time: '2026/7/21' },
     { hash: '1c6b9e0', author: 'fish-es', message: 'chore: 升级 Next.js 16 适配', time: '2026/7/20' },
   ])
+  const [stats, setStats] = useState<any>(null)
+  const [contributors, setContributors] = useState([
+    { name: 'fish-es', commits: 19 },
+    { name: 'chenzh659', commits: 9 },
+    { name: 'sea-fish-es', commits: 8 },
+    { name: 'Lily', commits: 5 },
+    { name: 'shixigege', commits: 4 },
+  ])
 
   useEffect(() => {
-    setApiKeyState(localStorage.getItem('agnes_api_key') || '')
+    setApiKeyState(getApiKeys().join('\n'))
+    setFeedbackNickname(localStorage.getItem('agnes_username') || '')
     projectApi.list().then(setProjects).catch(() => {})
     fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
     fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
     fetch('/api/changelog').then(r => r.json()).then(setChangelog).catch(() => {})
-  }, [])
+    fetch('/commits.json').then(r => r.ok ? r.json() : null).then(d => d && setCommits(d)).catch(() => {})
+    fetch('/contributors.json').then(r => r.ok ? r.json() : null).then(d => d && setContributors(d)).catch(() => {})
+    fetch('/api/stats').then(r => r.json()).then(setStats).catch(() => {})
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loggedIn])
 
   useEffect(() => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (key && typeof crypto !== 'undefined' && crypto.subtle) {
+    if (loggedIn && key && typeof crypto !== 'undefined' && crypto.subtle) {
       crypto.subtle.digest('SHA-256', new TextEncoder().encode(key))
         .then(buf => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 16))
         .then(hash => setIsAdmin(hash === '90af35f948de349b'))
         .catch(() => {})
     } else { setIsAdmin(false) }
-  }, [apiKey])
+  }, [apiKey, loggedIn])
 
-  const handleSaveKey = () => { setApiKey(apiKey); setShowKeyModal(false); projectApi.list().then(setProjects).catch(() => {}) }
+  const handleSaveKey = () => {
+    const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
+    setApiKeys(keys)
+    setShowKeyModal(false)
+    projectApi.list().then(setProjects).catch(() => {})
+  }
   const [checkingKey, setCheckingKey] = useState(false)
   const handleCheckKey = async () => {
-    if (!apiKey) { alert('请先填写 API Key'); return }
+    const keys = apiKey.split('\n').map(k => k.trim()).filter(Boolean)
+    if (keys.length === 0) { showAlert('请先填写 API Key'); return }
+    setCheckingKey(true)
     try {
-      const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` }, body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }) })
-      if (res.ok) { alert('API Key 有效') } else { alert(`API Key 无效 (${res.status})`) }
-    } catch (e: any) { alert('检查失败: ' + e.message) }
+      const results = await Promise.all(keys.map(async (k, i) => {
+        try {
+          const res = await fetch('https://apihub.agnes-ai.com/v1/chat/completions', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${k}` }, body: JSON.stringify({ model: 'agnes-2.0-flash', messages: [{ role: 'user', content: 'hi' }], max_tokens: 1 }) })
+          return `Key ${i + 1}: ${res.ok ? '有效' : `无效 (${res.status})`}`
+        } catch (e: any) { return `Key ${i + 1}: 检查失败 (${e.message})` }
+      }))
+      showAlert(results.join('\n'), 'Key 检查结果')
+    } finally { setCheckingKey(false) }
   }
   const handleCreate = async () => {
     if (!newName.trim()) return
     setCreating(true); setStoreGenre(genre)
     const epCount = episodeCount === 'custom' ? parseInt(customEpisodeCount) || 15 : parseInt(episodeCount)
     setStoreEpisodeCount(projectType === 'drama' ? epCount : 1)
-    try { const project = await projectApi.create(newName.trim(), aspectRatio, projectType); setProjects([project, ...projects]); setCurrentProject(project); setNewName('') }
-    catch (e: any) { alert(e.message) } finally { setCreating(false) }
+    const targetDuration = projectType === 'video' ? parseInt(videoDuration) || 60 : 0
+    try { const project = await projectApi.create(newName.trim(), aspectRatio, projectType, targetDuration); setProjects([project, ...projects]); setCurrentProject(project); setNewName('') }
+    catch (e: any) { showAlert(e.message) } finally { setCreating(false) }
   }
   const handleOpen = async (project: any) => {
     setCurrentProject(project)
     try { const res = await fetch(`/api/script/get?projectId=${project.id}`, { headers: { 'x-api-key': localStorage.getItem('agnes_api_key') || '' } }); const data = await res.json(); if (data?.episodes?.length) setEpisodes(data.episodes, data.scriptId) } catch { }
   }
-  const handleDelete = async (id: string) => { if (!confirm('确定要删除这个项目吗？')) return; await projectApi.delete(id); setProjects(projects.filter(p => p.id !== id)) }
+  const handleDelete = async (id: string) => {
+    if (!(await showConfirm('确定要将该项目移入回收站吗？30 天后将自动清理', { danger: true, confirmText: '移入回收站' }))) return
+    await projectApi.delete(id)
+    setProjects(projects.filter(p => p.id !== id))
+    projectApi.listDeleted().then(setDeletedProjects).catch(() => {})
+  }
   const handleRegenCover = async (project: any) => {
     const key = localStorage.getItem('agnes_api_key') || ''
-    if (!key) { alert('请先设置 API Key'); return }
+    if (!key) { showAlert('请先设置 API Key'); return }
     const title = project.dramaTitle || project.name; const ar = project.aspectRatio || '16:9'
     const coverSize = ar === '9:16' ? '768x1024' : ar === '1:1' ? '1024x1024' : '1024x768'
     try { const url = await generateImage(`${title}，短剧封面海报，电影感`, coverSize, key); await fetch('/api/asset/image', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': key }, body: JSON.stringify({ projectId: project.id, type: 'cover', name: '', imageUrl: url }) }); setProjects(projects.map(p => p.id === project.id ? { ...p, coverImage: url } : p)) }
-    catch (e: any) { alert('封面生成失败: ' + e.message) }
+    catch (e: any) { showAlert('封面生成失败: ' + e.message) }
   }
   const handleTogglePublic = async (project: any) => {
     const newPublic = !project.isPublic
     try { await fetch('/api/project', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': localStorage.getItem('agnes_api_key') || '' }, body: JSON.stringify({ id: project.id, isPublic: newPublic }) }); setProjects(projects.map(p => p.id === project.id ? { ...p, isPublic: newPublic } : p)) } catch { }
+  }
+  const handleRename = async (project: any) => {
+    const name = await showPrompt('输入新的剧名：', { title: '重命名', defaultValue: project.dramaTitle || project.name })
+    if (!name || !name.trim()) return
+    try {
+      await projectApi.rename(project.id, name.trim())
+      setProjects(projects.map(p => p.id === project.id ? { ...p, dramaTitle: name.trim() } : p))
+    } catch (e: any) { showAlert('重命名失败: ' + e.message) }
   }
   const handleDownloadCover = async (project: any) => {
     if (!project.coverImage) return
@@ -112,13 +154,48 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
     if (!feedbackContent.trim()) return; setSubmitting(true)
     try { const res = await fetch('/api/feedback', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ content: feedbackContent, nickname: feedbackNickname }) }); const data = await res.json(); if (res.ok) { setFeedbackList([data, ...feedbackList]); setFeedbackContent('') } } catch { } setSubmitting(false)
   }
+  const reloadFeedback = () => fetch('/api/feedback').then(r => r.json()).then(setFeedbackList).catch(() => {})
+  const handleFbReply = async (id: string) => {
+    const reply = await showPrompt('输入回复内容：', { title: '回复反馈' })
+    if (reply === null) return
+    await fetch('/api/feedback', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id, reply }) })
+    reloadFeedback()
+  }
+  const handleFbToggle = async (id: string, current: string) => {
+    await fetch('/api/feedback', { method: 'PUT', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id, status: current === 'done' ? 'open' : 'done' }) })
+    reloadFeedback()
+  }
+  const handleFbDelete = async (id: string) => {
+    if (!(await showConfirm('确定删除这条反馈吗？', { danger: true, confirmText: '删除' }))) return
+    await fetch('/api/feedback', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id }) })
+    reloadFeedback()
+  }
   const handleSubmitChangelog = async () => {
     if (!changelogContent.trim()) return
     try { const res = await fetch('/api/changelog', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ content: changelogContent }) }); const data = await res.json(); if (res.ok) { setChangelog([data, ...changelog]); setChangelogContent('') } } catch { }
   }
   const handleDeleteChangelog = async (id: string) => { try { await fetch('/api/changelog', { method: 'DELETE', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey }, body: JSON.stringify({ id }) }); setChangelog(changelog.filter(c => c.id !== id)) } catch { } }
 
-  const filtered = projectTab === 'mine' ? projects.filter(p => p.isOwner !== false) : projects.filter(p => p.isPublic)
+  const handleLogout = async () => {
+    await logout()
+    window.location.reload()
+  }
+
+  const filtered = projectTab === 'mine'
+    ? projects.filter(p => p.isOwner !== false)
+    : projectTab === 'public' ? projects.filter(p => p.isPublic) : deletedProjects
+
+  const handleRestore = async (id: string) => {
+    try {
+      await projectApi.restore(id)
+      setDeletedProjects(deletedProjects.filter(p => p.id !== id))
+      projectApi.list().then(setProjects).catch(() => {})
+    } catch (e: any) { showAlert('还原失败: ' + e.message) }
+  }
+  const handlePermanentDelete = async (id: string) => {
+    if (!(await showConfirm('彻底删除后将无法恢复，确定吗？', { danger: true, confirmText: '彻底删除' }))) return
+    try { await projectApi.delete(id, true); setDeletedProjects(deletedProjects.filter(p => p.id !== id)) } catch (e: any) { showAlert('删除失败: ' + e.message) }
+  }
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh' }}>
@@ -130,12 +207,8 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
         </div>
         <div className="sidebar-nav">
           <button className="active"><span className="icon">▶</span><span>项目</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
-          <button onClick={() => alert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
-        </div>
-        <div className="sidebar-bottom">
-          <button onClick={() => setShowTutorialModal(true)}><span className="icon">?</span><span>教程</span></button>
-          <button onClick={() => setFeedbackGuide(!feedbackGuide)}><span className="icon">✉</span><span>反馈</span></button>
+          <button onClick={() => showAlert('请先打开一个项目，再使用剧本创作功能')}><span className="icon">✎</span><span>剧本</span></button>
+          <button onClick={() => showAlert('请先打开一个项目，再使用资产库功能')}><span className="icon">■</span><span>资产库</span></button>
         </div>
       </nav>
 
@@ -149,11 +222,17 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <span className="topbar-bc"><span className="sep">/</span> 项目工作台</span>
           </div>
           <div className="topbar-right">
+            <button className="btn-commit" onClick={() => setCommitPanelOpen(true)}><span className="commit-dot"></span>提交记录 ({commits.length})</button>
             <button className="btn-sm" onClick={() => setShowTutorialModal(true)}>◉ 使用教程</button>
-            <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
+            {loggedIn && (
+              <button className="btn-sm" onClick={() => setShowKeyModal(true)}>◎ API Key</button>
+            )}
             <button className="btn-sm" onClick={() => setFeedbackGuide(!feedbackGuide)}>✉ 反馈</button>
             {!loggedIn && onLoginRequired && (
               <button className="btn-login" onClick={onLoginRequired}>登录 / 注册</button>
+            )}
+            {loggedIn && (
+              <button className="btn-sm" onClick={() => setShowLogoutConfirm(true)} style={{ color: 'var(--color-error)' }}>↩ 退出登录</button>
             )}
           </div>
         </div>
@@ -166,151 +245,205 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <p>AI 驱动剧本创作 · 角色与场景 · 一键生成</p>
           </div>
 
-          {/* CREATE SECTION (V5: grid layout) */}
-          <div className="create-section animate-enter-up delay-050">
-            <h3>新建项目</h3>
-            <div className="create-form">
-              <div className="field">
-                <label>项目名称</label>
-                <input className="input-field" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} placeholder="例如：霸总替身复仇记" />
+          {/* CREATE SECTION (V5: grid layout) — 登录后显示 */}
+          {loggedIn && (
+            <div className="create-section animate-enter-up delay-050">
+              <h3>新建项目</h3>
+              <div className="create-form">
+                <div className="field">
+                  <label>项目名称</label>
+                  <input className="input-field" value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleCreate()} placeholder="例如：霸总替身复仇记" />
+                </div>
+                <div className="field">
+                  <label>类型</label>
+                  <select className="input-field" value={projectType} onChange={e => setProjectType(e.target.value as 'drama' | 'video')}>
+                    <option value="drama">短剧</option>
+                    <option value="video">长视频</option>
+                  </select>
+                </div>
+                <div className="field">
+                  <label>画面比例</label>
+                  <select className="input-field" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}>
+                    <option value="9:16">9:16</option>
+                    <option value="16:9">16:9</option>
+                    <option value="1:1">1:1</option>
+                  </select>
+                </div>
+                {projectType === 'drama' && (
+                  <div className="field">
+                    <label>集数</label>
+                    <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
+                      <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
+                    </select>
+                  </div>
+                )}
+                <div className="field">
+                  <label>模板</label>
+                  <select className="input-field" value={genre} onChange={e => setGenre(e.target.value)}>
+                    <option value="auto">自动识别</option><option value="">无模板</option>
+                    {projectType === 'drama' ? <>
+                      <option value="霸总">霸道总裁</option><option value="复仇">复仇逆袭</option><option value="修仙">修仙玄幻</option><option value="甜宠">甜宠恋爱</option><option value="悬疑">悬疑推理</option><option value="穿越">穿越重生</option><option value="都市">都市情感</option><option value="古装">古装权谋</option><option value="搞笑">搞笑喜剧</option><option value="虐恋">虐恋催泪</option><option value="职场">职场逆袭</option><option value="校园">校园青春</option><option value="豪门">豪门恩怨</option><option value="战神">战神归来</option><option value="赘婿">赘婿逆袭</option><option value="重生">重生复仇</option>
+                    </> : <>
+                      <option value="寓言">寓言故事</option><option value="广告">商业广告</option><option value="科普">科普知识</option><option value="纪录">纪录短片</option><option value="教程">教学教程</option><option value="动漫">动漫故事</option><option value="情感">情感故事</option><option value="搞笑">搞笑段子</option>
+                    </>}
+                  </select>
+                </div>
+                <button className="btn-accent" onClick={handleCreate} disabled={creating || !newName.trim()} style={{ height: 40 }}>{creating ? '...' : '创建项目'}</button>
               </div>
-              <div className="field">
-                <label>类型</label>
-                <select className="input-field" value={projectType} onChange={e => setProjectType(e.target.value as 'drama' | 'video')}>
-                  <option value="drama">短剧</option>
-                  <option value="video">长视频</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>画面比例</label>
-                <select className="input-field" value={aspectRatio} onChange={e => setAspectRatio(e.target.value)}>
-                  <option value="9:16">9:16</option>
-                  <option value="16:9">16:9</option>
-                  <option value="1:1">1:1</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>集数</label>
-                <select className="input-field" value={episodeCount} onChange={e => setEpisodeCount(e.target.value)}>
-                  <option value="5">5</option><option value="10">10</option><option value="15">15</option><option value="20">20</option><option value="30">30</option><option value="custom">自定义</option>
-                </select>
-              </div>
-              <div className="field">
-                <label>模板</label>
-                <select className="input-field" value={genre} onChange={e => setGenre(e.target.value)}>
-                  <option value="auto">自动识别</option><option value="">无模板</option>
-                  {projectType === 'drama' ? <>
-                    <option value="霸总">霸道总裁</option><option value="复仇">复仇逆袭</option><option value="修仙">修仙玄幻</option><option value="甜宠">甜宠恋爱</option><option value="悬疑">悬疑推理</option><option value="穿越">穿越重生</option><option value="都市">都市情感</option><option value="古装">古装权谋</option><option value="搞笑">搞笑喜剧</option><option value="虐恋">虐恋催泪</option><option value="职场">职场逆袭</option><option value="校园">校园青春</option><option value="豪门">豪门恩怨</option><option value="战神">战神归来</option><option value="赘婿">赘婿逆袭</option><option value="重生">重生复仇</option>
-                  </> : <>
-                    <option value="寓言">寓言故事</option><option value="广告">商业广告</option><option value="科普">科普知识</option><option value="纪录">纪录短片</option><option value="教程">教学教程</option><option value="动漫">动漫故事</option><option value="情感">情感故事</option><option value="搞笑">搞笑段子</option>
-                  </>}
-                </select>
-              </div>
-              <button className="btn-accent" onClick={handleCreate} disabled={creating || !newName.trim()} style={{ height: 40 }}>{creating ? '...' : '创建项目'}</button>
-            </div>
-            {projectType === 'drama' && episodeCount === 'custom' && (
-              <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
-                <label>自定义集数</label>
-                <input className="input-field" type="number" min={3} max={100} value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)} placeholder="集" />
-              </div>
-            )}
-            {projectType === 'video' && (
-              <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
-                <label>时长</label>
-                <select className="input-field" value={videoDuration} onChange={e => setVideoDuration(e.target.value)}>
-                  <option value="30">30秒</option><option value="60">1分钟</option><option value="120">2分钟</option><option value="180">3分钟</option><option value="300">5分钟</option>
-                </select>
-              </div>
-            )}
-          </div>
-
-          {/* 反馈引导面板 */}
-          {feedbackGuide && (
-            <div className="info-card" style={{ marginBottom: 24, padding: '18px 22px' }}>
-              <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 10, color: 'var(--color-text)' }}>📮 如何反馈</h4>
-              <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.8 }}>
-                <p><strong>方式一：</strong>在下方「问题与建议」表单直接提交，所有用户可见。</p>
-                <p style={{ marginTop: 4 }}>
-                  <strong>方式二：</strong>
-                  访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>GitHub Issues 页面</a> 提交 Issue，适合复杂 bug 或功能需求。
-                </p>
-              </div>
-              <button onClick={() => setFeedbackGuide(false)} className="btn-ghost-sm" style={{ marginTop: 8, color: 'var(--color-text-tertiary)' }}>收起 ↑</button>
+              {projectType === 'drama' && episodeCount === 'custom' && (
+                <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
+                  <label>自定义集数</label>
+                  <input className="input-field" type="number" min={3} max={100} value={customEpisodeCount} onChange={e => setCustomEpisodeCount(e.target.value)} placeholder="集" />
+                </div>
+              )}
+              {projectType === 'video' && (
+                <div className="field" style={{ marginTop: 12, maxWidth: 100 }}>
+                  <label>时长</label>
+                  <select className="input-field" value={videoDuration} onChange={e => setVideoDuration(e.target.value)}>
+                    <option value="30">30秒</option><option value="60">1分钟</option><option value="120">2分钟</option><option value="180">3分钟</option><option value="300">5分钟</option>
+                  </select>
+                </div>
+              )}
             </div>
           )}
 
-          {/* 最近提交记录 */}
-          <div className="commit-section">
-            <div className="commit-header" onClick={() => setCommitsOpen(!commitsOpen)}>
-              <div className="commit-header-left">
-                <span className="arrow">{commitsOpen ? '▼' : '▶'}</span>
-                最近提交记录<span className="commit-count">({commits.length})</span>
-              </div>
-            </div>
-            <div className="commit-list" style={{ maxHeight: commitsOpen ? '600px' : '0' }}>
-              <table className="commit-table">
-                <thead><tr><th>提交</th><th>作者</th><th>说明</th><th>时间</th></tr></thead>
-                <tbody>
-                  {commits.map(c => (
-                    <tr key={c.hash}>
-                      <td className="commit-hash">{c.hash}</td>
-                      <td>{c.author}</td>
-                      <td className="commit-msg">{c.message}</td>
-                      <td className="commit-time">{c.time}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
-          {/* PROJECT LIST (V5: 下划线 tab) */}
-          <div className="animate-enter-up delay-100">
-            <div className="project-tabs">
-              <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
-              <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
-              <div style={{ flex: 1 }} />
-              <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
-            </div>
-
-            {filtered.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
-                {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : '暂无公开项目'}
+          {/* PROJECT LIST (V5: 下划线 tab) — 登录后显示 */}
+          {(
+            <div className="animate-enter-up delay-100">
+              <div className="project-tabs">
+                <button className={`project-tab ${projectTab === 'mine' ? 'active' : ''}`} onClick={() => setProjectTab('mine')}>我的项目</button>
+                <button className={`project-tab ${projectTab === 'public' ? 'active' : ''}`} onClick={() => setProjectTab('public')}>公开项目</button>
+                {loggedIn && <button className={`project-tab ${projectTab === 'recycle' ? 'active' : ''}`} onClick={() => { setProjectTab('recycle'); projectApi.listDeleted().then(setDeletedProjects).catch(() => {}) }}>回收站</button>}
+                <div style={{ flex: 1 }} />
+                <span style={{ fontSize: 11, color: 'var(--color-text-tertiary)' }}>共 {filtered.length} 个</span>
               </div>
-            ) : (
-              filtered.map(project => (
-                <div key={project.id} className="project-row" onClick={() => handleOpen(project)}>
-                  <div className="pr-left">
-                    {project.coverImage ? (
-                      <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
-                        <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" className="w-10 h-10 object-cover" />
+
+              <div style={{ minHeight: '58vh' }}>
+              {(!loggedIn && (projectTab === 'mine' || projectTab === 'recycle')) ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+                  请先登录后查看{projectTab === 'mine' ? '我的项目' : '回收站'}
+                  {onLoginRequired && <div style={{ marginTop: 12 }}><button className="btn-accent-sm" onClick={onLoginRequired}>登录 / 注册</button></div>}
+                </div>
+              ) : filtered.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: 40, color: 'var(--color-text-tertiary)', fontSize: 13 }}>
+                  {projectTab === 'mine' ? '暂无项目 — 创建一个开始你的创作之旅' : projectTab === 'public' ? '暂无公开项目' : '回收站是空的'}
+                </div>
+              ) : (
+                filtered.map(project => {
+                  const isRecycle = projectTab === 'recycle'
+                  const remainDays = isRecycle && project.deletedAt
+                    ? Math.max(0, 30 - Math.floor((Date.now() - new Date(project.deletedAt + 'Z').getTime()) / 86400000))
+                    : 0
+                  return (
+                  <div key={project.id} className="project-row" onClick={() => !isRecycle && handleOpen(project)}>
+                    <div className="pr-left">
+                      {project.coverImage ? (
+                        <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', overflow: 'hidden', flexShrink: 0, background: 'var(--color-surface-alt)' }}>
+                          <ProtectedImage source={project.coverImage} protectedUrl={`/api/file?kind=project-cover&id=${encodeURIComponent(project.id)}`} alt="" className="w-full h-full object-cover" />
+                        </div>
+                      ) : (
+                        <div style={{ width: 60, height: 80, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-alt)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); handleRegenCover(project) }}>🎬</div>
+                      )}
+                      <span className="project-name">{project.dramaTitle || project.name}</span>
+                      <div className="project-meta">
+                        {isRecycle ? (
+                          <>
+                            <span>删除于 {project.deletedAt ? new Date(project.deletedAt + 'Z').toLocaleString('zh-CN') : '—'}</span>
+                            <span style={{ color: remainDays <= 7 ? 'var(--color-error)' : 'var(--color-text-tertiary)' }}>剩余 {remainDays} 天</span>
+                          </>
+                        ) : (
+                          <>
+                            <span>{project.aspectRatio}</span>
+                            <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
+                            {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
+                          </>
+                        )}
                       </div>
-                    ) : (
-                      <div style={{ width: 40, height: 40, borderRadius: 'var(--radius-sm)', background: 'var(--color-surface-alt)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, cursor: 'pointer' }} onClick={e => { e.stopPropagation(); handleRegenCover(project) }}>🎬</div>
-                    )}
-                    <span className="project-name">{project.dramaTitle || project.name}</span>
-                    <div className="project-meta">
-                      <span>{project.aspectRatio}</span>
-                      <span>{project.projectType === 'video' ? '长视频' : '短剧'}</span>
-                      {project.isPublic && <span style={{ background: 'var(--color-success-bg)', color: 'var(--color-success)' }}>公开</span>}
+                    </div>
+                    <div className="pr-right" onClick={e => e.stopPropagation()}>
+                      {isRecycle ? (
+                        <>
+                          <button className="btn-outline" onClick={() => handleRestore(project.id)}>还原</button>
+                          <button className="btn-danger" onClick={() => handlePermanentDelete(project.id)}>彻底删除</button>
+                        </>
+                      ) : (
+                        <>
+                          {project.isOwner !== false && (
+                            <button className="btn-ghost-sm" onClick={(e) => { e.stopPropagation(); handleRename(project) }}>重命名</button>
+                          )}
+                          {project.isOwner !== false && (
+                            <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
+                          )}
+                          <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
+                          {project.isOwner !== false && (
+                            <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
-                  <div className="pr-right" onClick={e => e.stopPropagation()}>
-                    {project.isOwner !== false && (
-                      <button className="btn-ghost-sm" onClick={() => handleTogglePublic(project)}>{project.isPublic ? '设为私密' : '设为公开'}</button>
-                    )}
-                    <button className="btn-outline" onClick={() => handleOpen(project)}>打开</button>
-                    {project.isOwner !== false && (
-                      <button className="btn-danger" onClick={() => handleDelete(project.id)}>删除</button>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+                  )
+                })
+              )}
+              </div>
+            </div>
+          )}
 
-          {/* HOME BOTTOM (V5: 2栏) */}
+          {/* HOME BOTTOM (V5: 4栏 — 平台数据 / 贡献排行 / 更新日志 / 问题与建议) */}
           <div className="home-bottom" style={{ marginTop: 22 }}>
+            {/* 平台数据 */}
+            <div className="info-card">
+              <h4>平台数据</h4>
+              {stats ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {[
+                    { label: '项目', v: stats.projects, color: '#818cf8' },
+                    { label: '剧本', v: stats.scripts, color: '#34d399' },
+                    { label: '图片', v: stats.images, color: '#fbbf24' },
+                    { label: '视频', v: stats.videos, color: '#f472b6' },
+                  ].map(item => (
+                    <div key={item.label} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 10px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <span style={{ fontSize: 12, color: 'var(--color-text-secondary, #9ca3af)' }}>{item.label}</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <span style={{ fontSize: 18, fontWeight: 700, color: item.color }}>{item.v.total}</span>
+                        <span style={{ fontSize: 11, color: '#10b981', marginLeft: 6 }}>今日+{item.v.today}</span>
+                      </div>
+                    </div>
+                  ))}
+                  <p style={{ fontSize: 10, color: 'var(--color-text-tertiary, #6b7280)', marginTop: 4, textAlign: 'center' }}>今日按 UTC 统计</p>
+                </div>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--color-text-tertiary, #6b7280)' }}>加载中...</p>
+              )}
+            </div>
+
+            {/* 贡献排行 */}
+            <div className="info-card">
+              <h4>贡献排行</h4>
+              <div className="rank-list">
+                {contributors.map((c, i) => {
+                  const cls = i === 0 ? 'gold' : i === 1 ? 'silver' : i === 2 ? 'bronze' : 'normal'
+                  return (
+                    <div key={c.name} className="rank-item">
+                      <div className={`rank-num ${cls}`}>{i + 1}</div>
+                      <div className="rank-avatar-wrap">
+                        <div className="rank-avatar-letter">{c.name[0].toUpperCase()}</div>
+                        <img src={`https://github.com/${c.name}.png`} alt={c.name} className="rank-avatar-img" onError={e => e.currentTarget.style.display = 'none'} />
+                      </div>
+                      <div className="rank-info">
+                        <a href={`https://github.com/${c.name}`} target="_blank" rel="noopener noreferrer" className="rank-name">{c.name}</a>
+                      </div>
+                      <div className="rank-bar-wrap">
+                        <div className="rank-bar" style={{ width: `${(c.commits / (contributors[0]?.commits || 1)) * 100}%` }} />
+                      </div>
+                      <div className="rank-commits">{c.commits}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
             {/* 更新日志 */}
             <div className="info-card">
               <h4>更新日志</h4>
@@ -338,17 +471,88 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
                 <button className="btn-accent" style={{ fontSize: 11 }} onClick={handleSubmitFeedback} disabled={submitting || !feedbackContent.trim()}>{submitting ? '..' : '提交'}</button>
               </div>
               {feedbackList.length > 0 ? feedbackList.map(item => (
-                <div key={item.id} className="fb-item">
-                  <span className="fb-status open">处理中</span>
-                  <span style={{ fontWeight: 600, color: 'var(--color-text)', minWidth: 40 }}>{item.nickname || '匿名'}</span>
-                  <span>{item.content}</span>
-                  <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
+                <div key={item.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--color-border)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                    <span className={`fb-status ${item.status === 'done' ? 'done' : 'open'}`}>{item.status === 'done' ? '已完成' : '处理中'}</span>
+                    <span style={{ fontWeight: 600, color: 'var(--color-text)' }}>{item.nickname || '匿名'}</span>
+                    <span style={{ fontSize: 10, color: 'var(--color-text-tertiary)', marginLeft: 'auto' }}>{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text)', marginTop: 3 }}>{item.content}</div>
+                  {item.reply && (
+                    <div style={{ fontSize: 11, color: 'var(--color-accent)', marginTop: 4, paddingLeft: 8, borderLeft: '2px solid var(--color-accent)' }}>
+                      官方回复：{item.reply}
+                    </div>
+                  )}
+                  {isAdmin && (
+                    <div style={{ display: 'flex', gap: 8, marginTop: 5 }}>
+                      <button onClick={() => handleFbReply(item.id)} style={{ fontSize: 10, color: 'var(--color-accent)' }}>回复</button>
+                      <button onClick={() => handleFbToggle(item.id, item.status || 'open')} style={{ fontSize: 10, color: 'var(--color-success)' }}>{item.status === 'done' ? '标记未完成' : '标记已完成'}</button>
+                      <button onClick={() => handleFbDelete(item.id)} style={{ fontSize: 10, color: 'var(--color-error)' }}>删除</button>
+                    </div>
+                  )}
                 </div>
               )) : <div style={{ fontSize: 12, color: 'var(--color-text-tertiary)' }}>暂无反馈</div>}
             </div>
           </div>
         </div>
       </div>
+
+      {/* ===== SLIDE-OUT COMMIT PANEL ===== */}
+      {/* ===== 提交记录 MODAL ===== */}
+      {commitPanelOpen && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setCommitPanelOpen(false) }}>
+          <div className="modal">
+            <h3>最近提交记录 ({commits.length})</h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 20, maxHeight: '50vh', overflowY: 'auto' }}>
+              {commits.map(c => (
+                <div key={c.hash} style={{ padding: '10px 12px', background: 'var(--color-surface)', borderRadius: 'var(--radius-sm)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                    <span style={{ color: 'var(--color-accent)', fontFamily: 'monospace' }}>{c.hash}</span>
+                    <span style={{ color: 'var(--color-text-tertiary)' }}>{c.time}</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 2 }}>{c.author}</div>
+                  <div style={{ fontSize: 13, marginTop: 2 }}>{c.message}</div>
+                </div>
+              ))}
+            </div>
+            <div className="modal-footer">
+              <a href="https://github.com/fish-es/fish-short-drama-platform/commits/dev" target="_blank" rel="noopener noreferrer" className="btn-outline" style={{ textDecoration: 'none' }}>查看全部 →</a>
+              <button className="btn-outline" onClick={() => setCommitPanelOpen(false)}>关闭</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 反馈 MODAL ===== */}
+      {feedbackGuide && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setFeedbackGuide(false) }}>
+          <div className="modal">
+            <h3>如何反馈</h3>
+            <div style={{ fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.9, marginBottom: 20 }}>
+              <p><strong style={{ color: 'var(--color-text)' }}>方式一：</strong>在首页「问题与建议」表单直接提交，所有用户可见。</p>
+              <p style={{ marginTop: 8 }}>
+                <strong style={{ color: 'var(--color-text)' }}>方式二：</strong>
+                访问 <a href="https://github.com/fish-es/fish-short-drama-platform/issues" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--color-accent)', textDecoration: 'underline' }}>GitHub Issues 页面</a> 提交 Issue，适合复杂 bug 或功能需求。
+              </p>
+            </div>
+            <div className="modal-footer"><button className="btn-outline" onClick={() => setFeedbackGuide(false)}>关闭</button></div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== 退出登录确认 MODAL ===== */}
+      {showLogoutConfirm && (
+        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowLogoutConfirm(false) }}>
+          <div className="modal">
+            <h3>退出登录</h3>
+            <p style={{ marginBottom: 20 }}>确定要退出登录吗？</p>
+            <div className="modal-footer">
+              <button className="btn-outline" onClick={() => setShowLogoutConfirm(false)}>取消</button>
+              <button className="btn-accent" style={{ background: 'var(--color-error)' }} onClick={handleLogout}>确定退出</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ===== TUTORIAL MODAL ===== */}
       {showTutorialModal && (
@@ -380,11 +584,11 @@ export default function Home({ loggedIn, onLoginRequired }: HomeProps = {}) {
             <h3>API Key 配置</h3>
             <p>输入你的 API Key 以启用 AI 生成功能。Key 将安全保存在本地浏览器中。</p>
             <div className="field" style={{ marginBottom: 16 }}>
-              <label>API Key</label>
-              <input className="input-field" type="password" value={apiKey} onChange={e => setApiKeyState(e.target.value)} placeholder="sk-..." />
+              <label>API Key（每行一个，多个 Key 会并行加速生成）</label>
+              <textarea className="input-field" rows={4} value={apiKey} onChange={e => setApiKeyState(e.target.value)} placeholder="sk-...&#10;sk-...（第二个 Key，可选）" style={{ resize: 'vertical', fontFamily: 'monospace' }} />
             </div>
             <div className="modal-footer">
-              <button className="btn-outline" onClick={handleCheckKey}>检查可用性</button>
+              <button className="btn-outline" onClick={handleCheckKey} disabled={checkingKey}>{checkingKey ? '检查中...' : '检查可用性'}</button>
               <button className="btn-outline" onClick={() => setShowKeyModal(false)}>取消</button>
               <button className="btn-accent" onClick={handleSaveKey}>保存</button>
             </div>

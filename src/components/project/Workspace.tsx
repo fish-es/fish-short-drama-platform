@@ -9,16 +9,25 @@ import PipelineControl from '@/components/pipeline/PipelineControl'
 import AssetLibrary from '@/components/assets/AssetLibrary'
 import { getDeployEnv, DeployInfo } from '@/services/deploy-env'
 import { logout } from '@/services/api.client'
+import { showAlert } from '@/components/common/Dialog'
 
 export default function Workspace() {
-  const { currentProject, clearProject, currentEpisodeId, episodes } = useAppStore()
+  const { currentProject, clearProject, currentEpisodeId, episodes, setCurrentEpisodeId } = useAppStore()
   const [leftTab, setLeftTab] = useState<'script' | 'assets'>('script')
-  const [bannerCollapsed, setBannerCollapsed] = useState(false)
   const [deployInfo, setDeployInfo] = useState<DeployInfo | null>(null)
+
+  const isVideo = currentProject?.projectType === 'video'
 
   useEffect(() => {
     fetch('/deploy-info.json').then(r => r.ok ? r.json() : null).then(setDeployInfo).catch(() => {})
   }, [])
+
+  // 长视频只有一集，自动选中，无需显示分集时间线
+  useEffect(() => {
+    if (isVideo && episodes.length > 0 && !currentEpisodeId) {
+      setCurrentEpisodeId(episodes[0].id)
+    }
+  }, [isVideo, episodes, currentEpisodeId, setCurrentEpisodeId])
 
   if (!currentProject) return null
 
@@ -65,37 +74,13 @@ export default function Workspace() {
             <span className={`badge ${currentProject.projectType === 'video' ? 'badge-blue' : 'badge-gray'}`}>
               {currentProject.projectType === 'video' ? '长视频' : '短剧'}
             </span>
+            <button className="btn-commit" onClick={() => showAlert('请返回首页查看提交记录')}><span className="commit-dot"></span>提交记录</button>
           </div>
-        </div>
-
-        {/* SUBNAV */}
-        <div className="subnav">
-          <button className={`subnav-tab ${leftTab === 'script' ? 'active' : ''}`} onClick={() => setLeftTab('script')}>剧本创作</button>
-          <button className={`subnav-tab ${leftTab === 'assets' ? 'active' : ''}`} onClick={() => setLeftTab('assets')}>资产库</button>
-          <div className="subnav-spacer" />
         </div>
 
         {/* ===== SCRIPT TAB ===== */}
         {leftTab === 'script' && (
           <>
-            {/* STORY BANNER (可折叠) */}
-            <div className={`story-banner ${bannerCollapsed ? 'collapsed' : ''}`}>
-              <div className="story-banner-inner">
-                <div className="story-banner-meta">
-                  <div className="label">项目信息</div>
-                  <div className="meta-row"><strong>比例</strong> {currentProject.aspectRatio || '—'}</div>
-                  <div className="meta-row"><strong>类型</strong> {currentProject.projectType === 'video' ? '长视频' : '短剧'}</div>
-                  <div className="meta-row"><strong>状态</strong> {currentEpisodeId ? '创作中' : '新建'}</div>
-                </div>
-                <div className="story-banner-summary">
-                  <div className="banner-title">{currentProject.dramaTitle || currentProject.name}</div>
-                  <div className="banner-desc">在左侧输入你的故事构思，AI 将为你生成完整的剧本大纲和剧集内容。</div>
-                </div>
-              </div>
-            </div>
-            <button className="banner-toggle-btn" onClick={() => setBannerCollapsed(!bannerCollapsed)}>
-              {bannerCollapsed ? '展开梗概 ▼' : '收起梗概 ▲'}
-            </button>
 
             {/* SCRIPT VIEW: 左侧故事构思 + 右侧剧集时间线+详情 */}
             <div className="script-view">
@@ -115,7 +100,7 @@ export default function Workspace() {
                     <>
                       {/* 剧集头部 */}
                       <div className="ed-header">
-                        <div className="ed-num">第 {currentEpisode.number} 集</div>
+                        {!isVideo && <div className="ed-num">第 {currentEpisode.number} 集</div>}
                         <div className="ed-title">{currentEpisode.title}</div>
                         <div className="ed-meta">
                           <span className={`ep-badge ${currentEpisode.status === 'generated' ? 'done' : 'pending'}`}>
@@ -127,7 +112,7 @@ export default function Workspace() {
                       {/* 剧情概要 */}
                       {currentEpisode.summary && (
                         <div className="story-block">
-                          <h4>剧情概要</h4>
+                          <h4>{isVideo ? '剧情简介' : '剧情概要'}</h4>
                           <div className="story-text">{currentEpisode.summary}</div>
                         </div>
                       )}

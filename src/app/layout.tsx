@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { DialogHost } from "@/components/common/Dialog";
 
 export const metadata: Metadata = {
   title: "短剧开发平台",
@@ -12,8 +13,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="zh-CN">
-      <body>{children}</body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body>{children}<DialogHost /></body>
     </html>
   );
 }
